@@ -51,8 +51,3 @@ if __name__ == "__main__":
     ]
 
     result = run_calculation(Z, N, my_zetas, mode="fci")
-
-    if "zetas" in str(result):
-         print("\nFinal Optimized Zetas:")
-         for i, l in enumerate(['s', 'p', 'd']):
-             if i < len(my_zetas): print(f"  {l}: {np.round(result, 4)}")
