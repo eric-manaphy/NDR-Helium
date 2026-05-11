@@ -37,6 +37,26 @@ def run_calculation(Z, N_elec, zetas, mode="hf"):
         
         print(f"FCI Total Energy: {ci_res['E_ci']:.10f} Ha")
         print(f"Correlation Energy: {ci_res['E_correlation']:.10f} Ha")
+
+        ground_state_vector = ci_res['vectors'][:, 0]
+        print(f"Leading CI Coefficients: {ground_state_vector[0]:.4f}, {ground_state_vector[1]:.4f}, ...")
+
+        
+        print(f"\nCISD Components extracted from FCI:")
+        
+        coeffs = ci_res['cisd_coeffs']
+        
+        print(f"  REFERENCE (C0): {coeffs['C_0']:.6f}")
+        
+        for level in ['singles', 'doubles']:
+            data = coeffs.get(level, [])
+            if data:
+                print(f"  {level.upper()}:")
+                
+                sorted_excitations = sorted(data, key=lambda x: abs(x[1]), reverse=True)
+                for det, coeff in sorted_excitations[:5]: 
+                    print(f"    Det {bin(det)}: {coeff:.6f}")
+
         return ci_res
 
     return scf_res

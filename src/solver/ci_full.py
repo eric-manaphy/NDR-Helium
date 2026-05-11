@@ -1,7 +1,7 @@
 import numpy as np
 from scipy.linalg import eigh
 from itertools import combinations
-from src.utils import ao_to_mo_transform, build_spin_orbital_integrals
+from src.utils import ao_to_mo_transform, build_spin_orbital_integrals, get_excitation_level
 
 class FullCISolver:
     def __init__(self, scf_result):
@@ -86,10 +86,36 @@ class FullCISolver:
 
         H_ci = 0.5 * (H_ci + H_ci.T)
         energies, vectors = eigh(H_ci)
+
+        # Extract the ground state CI vector
+        groun_state_vector = vectors[:, 0]
+
+        hf_det = dets[0]
+
+        cisd_coeffs = {
+            "C_0": 0.0,
+            "singles": [],
+            "doubles": [],
+            "others": []
+        }
+
+        for idx, det in enumerate(dets):
+            coeff = groun_state_vector[idx]
+            level = get_excitation_level(det, hf_det)
+
+            if level == 0:
+                cisd_coeffs["C_0"] = coeff
+            elif level == 1:
+                cisd_coeffs["singles"].append((det, coeff))
+            elif level == 2:
+                cisd_coeffs["doubles"].append((det, coeff))
+            else:
+                cisd_coeffs["others"].append((det, coeff))
         
         return {
             "E_ci": energies[0],
             "E_correlation": energies[0] - self.scf_result["E_total"],
             "vectors": vectors,
-            "determinants": dets
+            "determinants": dets,
+            "cisd_coeffs": cisd_coeffs
         }

@@ -81,3 +81,11 @@ def build_spin_orbital_integrals(h_mo, eri_mo):
                     g_spin[2*p+1, 2*q, 2*r+1, 2*s] = val
                     
     return h_spin, g_spin
+
+def get_excitation_level(det, ref_det):
+    '''
+    Return 0 for C_0, 1 for Single, 2 for Doubles, etc.
+    Each excitation moves one electron from an occupied to a virtual orbital,
+    changing two bits in the determinant.
+    '''
+    return (det ^ ref_det).bit_count() // 2
