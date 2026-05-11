@@ -3,6 +3,7 @@ from src import make_basis
 from src.solver.hf_scf import scf
 from src.solver.ci_full import FullCISolver
 from src.solver.orbital_opt import optimize_hf_orbitals
+from src.solver.NDR import calculate_1rdm, get_natural_orbitals 
 
 def run_calculation(Z, N_elec, zetas, mode="hf"):
     """
@@ -29,8 +30,8 @@ def run_calculation(Z, N_elec, zetas, mode="hf"):
     
     print(f"HF Total Energy: {scf_res['E_total']:.10f} Ha")
 
-    # 3. FCI MODE
-    if mode == "fci":
+    # 3. FCI & NDR MODE
+    if mode in ["fci", "ndr"]:
         print("--> Running Full Configuration Interaction...")
         ci_engine = FullCISolver(scf_res)
         ci_res = ci_engine.solve()
@@ -57,6 +58,29 @@ def run_calculation(Z, N_elec, zetas, mode="hf"):
                 for det, coeff in sorted_excitations[:5]: 
                     print(f"    Det {bin(det)}: {coeff:.6f}")
 
+        if mode == "ndr":
+            print("\n--> Analyzing Natural Determinant Reference (NDR)...")
+            ground_state_vec = ci_res['vectors'][:, 0]
+            
+            # Compute the exact 1RDM from CI coefficients
+            rdm = calculate_1rdm(ci_engine, ground_state_vec)
+            print(f"1RDM Computed. Trace (electrons): {np.trace(rdm):.4f}")
+
+            # Diagonalize 1RDM to find Natural Orbitals and Occupations
+            occs, natural_orbitals, ndr_coeffs = get_natural_orbitals(rdm, N_elec)
+            
+            print("\nNatural Orbital Occupation Numbers (top 6):")
+            for i, occ in enumerate(occs[:6]):
+                print(f"  NO {i+1}: {occ:.8f}")
+
+            # The NDR consists of the most occupied natural orbitals
+            print(f"\nNDR constructed from {N_elec} most occupied natural orbitals.")
+            
+            # Add NDR data to results dictionary
+            ci_res['1rdm'] = rdm
+            ci_res['no_occupations'] = occs
+            ci_res['natural_orbitals'] = natural_orbitals
+
         return ci_res
 
     return scf_res
@@ -70,4 +94,4 @@ if __name__ == "__main__":
         [4.5, 2.0, 0.6], 
     ]
 
-    result = run_calculation(Z, N, my_zetas, mode="fci")
+    result = run_calculation(Z, N, my_zetas, mode="ndr")
