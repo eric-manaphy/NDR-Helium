@@ -22,7 +22,7 @@ def run_calculation(Z, N_elec, zetas, mode="hf"):
     else:
         working_zetas = zetas
 
-    # 2. RUN BASE HF (Required for both 'hf' and 'fci')
+    # 2. RUN BASE HF 
     print("--> Running SCF...")
     basis = make_basis(*working_zetas)
     scf_res = scf(basis, Z, N_elec)
