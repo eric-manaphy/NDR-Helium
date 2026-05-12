@@ -20,6 +20,10 @@ def run_calculation(Z, N_elec, zetas, mode="hf"):
         res = optimize_hf_orbitals(Z, N_elec, zetas)
         working_zetas = res['zetas']
         print(f"--> Optimization Converged. Final Energy: {res['energy']:.10f}")
+
+        print("Optimized Zetas:")
+        for i, zeta in enumerate(working_zetas[0]):
+            print(f"  Zeta {i+1}: {zeta:.6f}")
     else:
         working_zetas = zetas
 
@@ -91,7 +95,9 @@ if __name__ == "__main__":
     N = 2
 
     my_zetas = [
-        [4.5, 2.0, 0.6], 
+        [8.955016, 2.975601, 1.477575, 0.706409, 0.207456, 0.101581],
+        [1.0],
+        [0.5]
     ]
 
     result = run_calculation(Z, N, my_zetas, mode="ndr")
