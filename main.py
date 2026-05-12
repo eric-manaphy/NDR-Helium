@@ -80,7 +80,6 @@ def run_calculation(Z, N_elec, zetas, mode="hf"):
             # The NDR consists of the most occupied natural orbitals
             print(f"\nNDR constructed from {N_elec} most occupied natural orbitals.")
             
-            # Add NDR data to results dictionary
             ci_res['1rdm'] = rdm
             ci_res['no_occupations'] = occs
             ci_res['natural_orbitals'] = natural_orbitals
@@ -95,9 +94,7 @@ if __name__ == "__main__":
     N = 2
 
     my_zetas = [
-        [8.955016, 2.975601, 1.477575, 0.706409, 0.207456, 0.101581],
-        [1.0],
-        [0.5]
+        [8.955016, 2.975601, 1.477575, 0.706409, 0.207456, 0.101581]
     ]
 
-    result = run_calculation(Z, N, my_zetas, mode="ndr")
+    result = run_calculation(Z, N, my_zetas, mode="opt")

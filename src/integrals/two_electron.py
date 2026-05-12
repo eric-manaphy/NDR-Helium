@@ -89,20 +89,30 @@ def radial_repulsion_integral(bi, bj, bk, bl, L, deriv=False):
 
     return R, (dI1_dp + dI2_dp), (dI1_dq + dI2_dq)
 
-def electron_repulsion_integral(bi, bj, bk, bl):
-
+def electron_repulsion_integral(bi, bj, bk, bl, deriv=False):
     Lmin = max(abs(bi.l - bj.l), abs(bk.l - bl.l))
     Lmax = min(bi.l + bj.l, bk.l + bl.l)
     
-    total = 0.0
+    total_val = 0.0
+    total_grad_bi = 0.0 # dERI / d_zeta_i
+    
     for L in range(Lmin, Lmax + 1):
-        # Parity check: (li+lj+L) must be even AND (lk+ll+L) must be even
         if (bi.l + bj.l + L) % 2 == 0 and (bk.l + bl.l + L) % 2 == 0:
             A_L = angular_part(bi, bj, bk, bl, L)
             if abs(A_L) > 1e-15:
-                R_L = radial_repulsion_integral(bi, bj, bk, bl, L)
-                total += A_L * R_L
-    return float(total)
+                if deriv:
+                    # Capture the radial derivatives you already implemented
+                    R_L, dR_dp, dR_dq = radial_repulsion_integral(bi, bj, bk, bl, L, deriv=True)
+                    total_val += A_L * R_L
+                    # Since p = zeta_i + zeta_j, dR/d_zeta_i = dR/dp
+                    total_grad_bi += A_L * dR_dp
+                else:
+                    R_L = radial_repulsion_integral(bi, bj, bk, bl, L, deriv=False)
+                    total_val += A_L * R_L
+                    
+    if deriv:
+        return float(total_val), float(total_grad_bi)
+    return float(total_val)
 
 def build_eri_tensor(basis):
     n = len(basis)
