@@ -94,7 +94,9 @@ if __name__ == "__main__":
     N = 2
 
     my_zetas = [
-        [8.955016, 2.975601, 1.477575, 0.706409, 0.207456, 0.101581]
+        [8.955016, 2.975601, 1.477575, 0.706409, 0.207456, 0.101581],
+        [1.0],
+        [0.7]
     ]
 
-    result = run_calculation(Z, N, my_zetas, mode="opt")
+    result = run_calculation(Z, N, my_zetas, mode="ndr")

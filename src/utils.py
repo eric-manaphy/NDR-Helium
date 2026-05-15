@@ -69,8 +69,8 @@ def build_spin_orbital_integrals(h_mo, eri_mo):
 
     g_spin = np.zeros((n_spin, n_spin, n_spin, n_spin))
     for p in range(n_mo):
-        for q in range(n_mo):
-            for r in range(n_mo):
+        for r in range(n_mo):
+            for q in range(n_mo):
                 for s in range(n_mo):
                     val = eri_mo[p, r, q, s]
             
