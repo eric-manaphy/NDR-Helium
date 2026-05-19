@@ -72,9 +72,6 @@ def run_calculation(Z, N_elec, zetas, mode="hf"):
                         sum = e[a]+e[b]-e[i]-e[j]
                         # e_mat[v_idx] = -(g_spin[a,b,i,j] - g_spin[a,b,j,i]) / sum
                         e_mat[v_idx] = sum
-                        # e_mat[get_multi_index(j,i,a,b,occ,virt)] = sum
-                        # e_mat[get_multi_index(i,j,b,a,occ,virt)] = sum
-                        # e_mat[get_multi_index(j,i,b,a,occ,virt)] = sum
                         v_idx += 1
         e_mat[0] = 0.0
 
@@ -196,6 +193,7 @@ def run_calculation(Z, N_elec, zetas, mode="hf"):
             # The NDR consists of the most occupied natural orbitals
             print(f"\nNDR constructed from {N_elec} most occupied natural orbitals.")
             
+            # Add NDR data to results dictionary
             ci_res['1rdm'] = rdm
             ci_res['no_occupations'] = occs
             ci_res['natural_orbitals'] = natural_orbitals
@@ -209,10 +207,14 @@ if __name__ == "__main__":
     Z = 2
     N = 2
 
+    # my_zetas = [
+    #     [8.955016, 2.975601, 1.477575, 0.706409, 0.207456, 0.101581],
+    #     [1.0],
+    #     [0.7]
+    # ]
+
     my_zetas = [
-        [8.955016, 2.975601, 1.477575, 0.706409, 0.207456, 0.101581],
-        [1.0],
-        [0.7]
+        [4.5, 2.0, 0.6], 
     ]
 
     result = run_calculation(Z, N, my_zetas, mode="opt")
