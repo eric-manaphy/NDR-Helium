@@ -6,7 +6,7 @@ from src.solver.ci_full import FullCISolver
 from src.solver.orbital_opt import optimize_hf_orbitals
 from src.solver.NDR import calculate_1rdm, get_natural_orbitals
 from src.utils import ao_to_mo_transform, build_spin_orbital_integrals, get_multi_index
-from src.ndr import libkrylov as lk
+import libkrylov as lk
 
 def run_calculation(Z, N_elec, zetas, mode="hf"):
     """
@@ -23,10 +23,6 @@ def run_calculation(Z, N_elec, zetas, mode="hf"):
         res = optimize_hf_orbitals(Z, N_elec, zetas)
         working_zetas = res['zetas']
         print(f"--> Optimization Converged. Final Energy: {res['energy']:.10f}")
-
-        print("Optimized Zetas:")
-        for i, zeta in enumerate(working_zetas[0]):
-            print(f"  Zeta {i+1}: {zeta:.6f}")
     else:
         working_zetas = zetas
 
@@ -38,10 +34,6 @@ def run_calculation(Z, N_elec, zetas, mode="hf"):
     print(f"HF Total Energy: {scf_res['E_total']:.10f} Ha")
 
     if mode in ["hf", "opt"]:
-        # D = scf_res["density"]
-        # J = scf_res["Hartree"]
-        # K = scf_res["Exchange"]
-        # print(0.5 * np.trace(D @ J), 0.5 * np.trace(D @ K), 0.5 * np.trace(D @ (J + K)))
         f_mo = scf_res["coefficients"].T @ scf_res["Fock"] @ scf_res["coefficients"]
         eri_mo = ao_to_mo_transform(scf_res["eri"], scf_res["coefficients"])
         f_spin, g_spin = build_spin_orbital_integrals(f_mo, eri_mo)
@@ -50,98 +42,80 @@ def run_calculation(Z, N_elec, zetas, mode="hf"):
         occ = scf_res["n_elec"]
         virt = n_spin - occ
         # full_dim = occ*(occ-1)*virt*(virt-1)
-        full_dim = comb(virt, occ, exact=True) + 1
+        full_dim = comb(virt, occ, exact=True)
         solution_dim = 1
         basis_dim = 1
         e_mat = np.empty(full_dim, dtype=np.float64, order='F')
 
-        # EH = 0
-        # EX = 0
-        # v_idx = 0
-        # for i in range(1, occ):
-        #     for j in range(0, i):
-        #         EH += 2*g_spin[i, j, i, j]
-        #         EX += 2*g_spin[i, j, j, i]
-        # print(EH, EX)
-
-        v_idx = 1
+        v_idx = 0
         for i in range(1, occ):
             for j in range(0, i):
                 for a in range(occ+1, n_spin):
                     for b in range(occ, a):
                         sum = e[a]+e[b]-e[i]-e[j]
-                        # e_mat[v_idx] = -(g_spin[a,b,i,j] - g_spin[a,b,j,i]) / sum
                         e_mat[v_idx] = sum
                         # e_mat[get_multi_index(j,i,a,b,occ,virt)] = sum
                         # e_mat[get_multi_index(i,j,b,a,occ,virt)] = sum
                         # e_mat[get_multi_index(j,i,b,a,occ,virt)] = sum
                         v_idx += 1
-        e_mat[0] = 0.0
+        e_mat[0] = 0.000001
 
         lk.initialize()
-        index = lk.add_space(lk.Kind.REAL, lk.Structure.SYMMETRIC, lk.Equation.EIGENVALUE,
+        index = lk.add_space(lk.real_kind, lk.symmetric_structure, lk.eigenvalue_equation,
                              full_dim, solution_dim, basis_dim)
         # vectors = np.zeros(full_dim, dtype=np.float64, order='F')
         # vectors[5] = 1.0
         # vectors = np.random.rand(full_dim)
         # lk.set_real_space_vectors(index, vectors)
-        lk.set_space_preconditioner(index, 'd')
-        lk.set_space_diagonal(index, np.diag(e_mat))
-        lk.set_real_space_vectors_from_diagonal(index, basis_dim, np.diag(e_mat))
-        # lk.set_real_space_vectors(index, e_mat)
-        def multiply(vectors, products):
+        # lk.set_space_preconditioner(index, 'd')
+        # lk.set_space_diagonal(index, np.diag(e_mat))
+        lk.set_real_space_vectors_from_diagonal(index, full_dim, basis_dim, e_mat)
+        def multiply(m, n, vectors, products):
             # Calculate c_0 and first term
-            c_0 = vectors[0]
-            d_0 = 0
-            v_idx = 1
+            c_0 = 0
+            v_idx = 0
             for i in range(1, occ):
                 for j in range(0, i):
                     for a in range(occ+1, n_spin):
                         for b in range(occ, a):
                             ijab = vectors[v_idx]
-                            d_0 += 2*(g_spin[i,j,a,b]-g_spin[i,j,b,a])*ijab
+                            c_0 += (2*g_spin[i,j,a,b]-g_spin[j,i,a,b]-g_spin[i,j,b,a])*ijab
                             # Not sure if I can guarantee products is already initalized
                             # So I'll just initialize (the relevant indices) here
-                            products[v_idx] = e_mat[v_idx]*ijab
-                            # products[v_idx] = 0
+                            products[v_idx] = (e[a]+e[b]-e[i]-e[j])*ijab
                             v_idx += 1
-            products[0] = d_0
+
             # Calculate occ subloop (second term)
-            # curr_idx = 1
-            # for i in range(1, occ):
-            #     for j in range(0, i):
-            #         v_sub_idx = 1
-            #         for l in range(1, occ):
-            #             for k in range(0, l):
-            #                 v_idx = curr_idx
-            #                 for a in range(occ+1, n_spin):
-            #                     for b in range(occ, a):
-            #                         products[v_idx] += vectors[v_sub_idx]*(-g_spin[l,k,j,i]+g_spin[k,l,j,i])
-            #                         v_idx += 1
-            #                         v_sub_idx += 1
-            #         curr_idx = v_idx
+            curr_idx = 0
+            for i in range(1, occ):
+                for j in range(0, i):
+                    v_sub_idx = 0
+                    for l in range(1, occ):
+                        for k in range(0, l):
+                            v_idx = curr_idx
+                            for a in range(occ+1, n_spin):
+                                for b in range(occ, a):
+                                    products[v_idx] += vectors[v_sub_idx]*(-g_spin[l,k,j,i]+g_spin[k,l,j,i])
+                                    v_idx += 1
+                                    v_sub_idx += 1
+                    curr_idx = v_idx
 
             # Calculate virt subloop (second term) and everything else
-            v_idx = 1
-            curr_idx = 1
+            v_idx = 0
             for i in range(1, occ):
                 for j in range(0, i):
                     for a in range(occ+1, n_spin):
                         for b in range(occ, a):
-                            v_sub_idx = curr_idx
+                            v_sub_idx = 0
                             ijab = 0
-                            # for d in range(occ+1, n_spin):
-                            #     for c in range(occ, d):
-                            #         ijab += vectors[v_sub_idx]*(g_spin[a,b,c,d]-g_spin[a,b,d,c])
-                            #         v_sub_idx += 1
-                            # products[v_idx] = (
-                            #     products[v_idx] + ijab - (g_spin[a,b,i,j]-g_spin[a,b,j,i])*c_0/2
-                            # )
+                            for d in range(occ+1, n_spin):
+                                for c in range(occ, d):
+                                    ijab += vectors[v_sub_idx]*(g_spin[a,b,c,d]+g_spin[a,b,d,c])
+                                    v_sub_idx += 1
                             products[v_idx] = (
-                                products[v_idx] - (g_spin[a,b,i,j]-g_spin[a,b,j,i])*c_0/2
+                                products[v_idx] + ijab - (g_spin[a,b,i,j]-g_spin[a,b,j,i])*c_0/2
                             )
                             v_idx += 1
-                    curr_idx = v_sub_idx
 
             return 0
         lk.solve_real_equation(index, multiply)
@@ -196,6 +170,7 @@ def run_calculation(Z, N_elec, zetas, mode="hf"):
             # The NDR consists of the most occupied natural orbitals
             print(f"\nNDR constructed from {N_elec} most occupied natural orbitals.")
             
+            # Add NDR data to results dictionary
             ci_res['1rdm'] = rdm
             ci_res['no_occupations'] = occs
             ci_res['natural_orbitals'] = natural_orbitals
@@ -210,9 +185,7 @@ if __name__ == "__main__":
     N = 2
 
     my_zetas = [
-        [8.955016, 2.975601, 1.477575, 0.706409, 0.207456, 0.101581],
-        [1.0],
-        [0.7]
+        [4.5, 2.0, 0.6], 
     ]
 
     result = run_calculation(Z, N, my_zetas, mode="opt")

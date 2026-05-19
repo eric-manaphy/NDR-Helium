@@ -89,3 +89,23 @@ def get_excitation_level(det, ref_det):
     changing two bits in the determinant.
     '''
     return (det ^ ref_det).bit_count() // 2
+
+def get_multi_index(i, j, a, b, occ, virt):
+    '''
+    Returns index of doubles CI coefficient vector.
+    Requires four indices and number of occupied and virtual orbitals looped over
+    '''
+    occ_coeff = virt * (virt - 1) // 2
+    shift =  occ_coeff * occ * (occ - 1) // 2
+    # j > i and b > a highest index
+    if j > i and b > a:
+        return 3*shift + (j * (j - 1) // 2 + i) * occ_coeff + (b - occ)*(b - occ - 1) // 2 + a - occ
+    # j > i and b < a second-highest index
+    elif j > i:
+        return 2*shift + (j * (j - 1) // 2 + i) * occ_coeff + (a - occ)*(a - occ - 1) // 2 + b - occ
+    # j < i and b > a third-highest index
+    elif b > a:
+        return shift + (i * (i - 1) // 2 + j) * occ_coeff + (b - occ)*(b - occ - 1) // 2 + a - occ
+    # Default case, but this shouldn't be used
+    else:
+        return (i * (i - 1) // 2 + j) * occ_coeff + (a - occ)*(a - occ - 1) // 2 + b - occ

@@ -97,6 +97,8 @@ def scf(basis, Z, N_elec, max_iter=150, conv=1e-7, damping=0.3):
                 "orb_energies": eps_new_full,
                 "density": D_new,
                 "Fock": F,
+                "Hartree": J_final,
+                "Exchange": K_final,
                 "coefficients": C_new_full,
                 "H_core": H_core,
                 "n_elec": N_elec,
