@@ -115,7 +115,7 @@ cdef extern from "include/ckrylov.h":
                                                     int_t solution_dim,
                                                     real_t *expectation_vals)
     real_t ckrylov_get_space_iteration_lagrangian(int_t index, int_t iter)
-    int_t ckrylov_get_space_iteration_residual_norms(int_t index, int_t iter,
+    int_t ckrylov_get_space_iteration_residual_norms_(int_t index, int_t iter,
                                                     int_t solution_dim,
                                                     real_t *residual_norms)
     real_t ckrylov_get_space_iteration_max_residual_norms(int_t index, int_t iter)

@@ -62,7 +62,7 @@ class FullCISolver:
         dets = self._make_determinants()
         n_det = len(dets)
         det_map = {det: i for i, det in enumerate(dets)}
-        H_ci = np.zeros((n_det, n_det))
+        self.H_ci = np.zeros((n_det, n_det))
 
         for j, det_j in enumerate(dets):
   
@@ -72,7 +72,7 @@ class FullCISolver:
                     if abs(val) < 1e-12: continue
                     det_i, phase = self._apply_one_body(det_j, p, q)
                     if det_i in det_map:
-                        H_ci[det_map[det_i], j] += phase * val
+                        self.H_ci[det_map[det_i], j] += phase * val
 
             for p in range(self.n_spin):
                 for q in range(self.n_spin):
@@ -82,10 +82,10 @@ class FullCISolver:
                             if abs(val) < 1e-12: continue
                             det_i, phase = self._apply_two_body(det_j, p, q, r, s)
                             if det_i in det_map:
-                                H_ci[det_map[det_i], j] += 0.5 * phase * val
+                                self.H_ci[det_map[det_i], j] += 0.5 * phase * val
 
-        H_ci = 0.5 * (H_ci + H_ci.T)
-        energies, vectors = eigh(H_ci)
+        self.H_ci = 0.5 * (self.H_ci + self.H_ci.T)
+        energies, vectors = eigh(self.H_ci)
 
         # Extract the ground state CI vector
         groun_state_vector = vectors[:, 0]
@@ -117,5 +117,6 @@ class FullCISolver:
             "E_correlation": energies[0] - self.scf_result["E_total"],
             "vectors": vectors,
             "determinants": dets,
-            "cisd_coeffs": cisd_coeffs
+            "cisd_coeffs": cisd_coeffs,
+            "H_ci": self.H_ci
         }

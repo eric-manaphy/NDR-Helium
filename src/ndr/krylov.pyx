@@ -1,5 +1,6 @@
 from enum import Enum
 import threading
+from functools import partial
 import numpy as np
 cimport numpy as cnp
 from ctypes cimport int_t, real_t, complex_t, char_t, bool_t
@@ -65,6 +66,9 @@ class LibkrylovError(RuntimeError):
         super().__init__(f"Error {error}: {name}")
 
 cdef inline void _assert(int_t error) except *:
+    if error == ck.CKRYLOV_NO_BASIS_UPDATE:
+        print(f"Error {error}: CKRYLOV_NO_BASIS_UPDATE")
+        return
     if error != ck.CKRYLOV_OK:
         raise LibkrylovError(error)
 
@@ -76,6 +80,24 @@ def initialize():
 # Finalize libkrylov
 def finalize():
     cdef int_t error = ck.ckrylov_finalize()
+    _assert(error)
+
+# Changes libkrylov options with int_t values (max iterations)
+def set_integer_option(str key, int_t value):
+    cdef bytes k = key.encode('ascii')
+
+    cdef int_t error = ck.ckrylov_set_integer_option(
+        k, len(k), value
+    )
+    _assert(error)
+
+# Changes libkrylov options with real_t values
+def set_real_option(str key, real_t value):
+    cdef bytes k = key.encode('ascii')
+
+    cdef int_t error = ck.ckrylov_set_real_option(
+        k, len(k), value
+    )
     _assert(error)
 
 # Adds new Krylov subspace solver
@@ -120,10 +142,10 @@ def set_space_diagonal(int_t index, cnp.ndarray matrix):
     matrix = np.asfortranarray(matrix, dtype=np.float64)
 
     cdef int_t full_dim = matrix.shape[0]
-    cdef const real_t[::1, :] m_p = matrix
+    cdef const real_t[::1] m_p = matrix
 
     cdef int_t error = ck.ckrylov_set_space_diagonal(
-        index, full_dim, &m_p[0,0]
+        index, full_dim, &m_p[0]
     )
     _assert(error)
 
@@ -133,10 +155,10 @@ def set_real_space_vectors_from_diagonal(int_t index, int_t basis_dim, cnp.ndarr
     matrix = np.asfortranarray(matrix, dtype=np.float64)
 
     cdef int_t full_dim = matrix.shape[0]
-    cdef const real_t[::1, :] m_p = matrix
+    cdef const real_t[::1] m_p = matrix
 
     cdef int_t error = ck.ckrylov_set_real_space_vectors_from_diagonal(
-        index, full_dim, basis_dim, &m_p[0,0]
+        index, full_dim, basis_dim, &m_p[0]
     )
     _assert(error)
 
@@ -216,11 +238,25 @@ cdef int_t _real_wrapper(const int_t *full_dim, const int_t *subset_dim,
         p = np.asarray(<real_t[:size:1]>products, order='F')
         error = _tls.multiply(v, p)
         iter = get_space_num_iterations(1)
-        print(iter, '\n', get_space_eigenvalues(1, 1), '\n', v, '\n', p)
+        if iter == 0:
+            print(f'Iteration {iter}\nEigenvalue: {get_space_eigenvalues(1,1)}\nResidual norms: N/A\n')
+        else:
+            print(f'Iteration {iter}\nEigenvalue: {get_space_eigenvalues(1,1)}\nResidual norms: {get_space_iteration_residual_norms(1,iter,1)}\n')
+        # if iter == 0:
+        #     print(f'Iteration {iter}\nEigenvalue: {get_space_eigenvalues(1,1)}\nEigenvectors: {get_real_space_solutions(1,full,1).flatten()}\nVector: {v}\nProduct: {p}\nResidual norms: N/A\n')
+        # else:
+        #     print(f'Iteration {iter}\nEigenvalue: {get_space_eigenvalues(1,1)}\nEigenvectors: {get_real_space_solutions(1,full,1).flatten()}\nVector: {v}\nProduct: {p}\nResidual norms: {get_space_iteration_residual_norms(1,iter,1)}\n')
         return error
 
-def solve_real_equation(int_t index, multiply):
-    _tls.multiply = multiply
+def solve_real_equation(int_t index, multiply, occ, virt, g_spin, e_diff, f_c):
+    _tls.multiply = partial(
+        multiply,
+        occ = occ,
+        virt = virt,
+        g_spin = g_spin,
+        e_diff = e_diff,
+        f_c = f_c,
+    )
     try:
         error = ck.ckrylov_solve_real_equation(index, _real_wrapper)
         _assert(error)
@@ -249,15 +285,48 @@ def solve_complex_equation(int_t index, multiply):
     finally:
         del _tls.multiply
 
+# def get_space_iteration_expectation_vals(int_t index, int_t iter, int_t solution_dim):
+#     expectations = np.empty(solution_dim, dtype=np.float64, order='F')
+#     cdef real_t[::1] e_p = expectations
+
+#     cdef int_t error = ck.ckrylov_get_space_iteration_expectation_vals(
+#         index, iter, solution_dim, &e_p[0]
+#     )
+#     _assert(error)
+
+#     return expectations
+
+# def get_space_last_expectation_vals(int_t index, int_t solution_dim):
+#     expectations = np.empty(solution_dim, dtype=np.float64, order='F')
+#     cdef real_t[::1] e_p = expectations
+
+#     cdef int_t error = ck.ckrylov_get_space_last_expectation_vals(
+#         index, solution_dim, &e_p[0]
+#     )
+#     _assert(error)
+
+#     return expectations
+
 def get_space_num_iterations(int_t index):
     return ck.ckrylov_get_space_num_iterations(index)
 
-# def get_space_iteration_residual_norms(int_t index, int_t iter, int_t solution_dim):
+def get_space_iteration_residual_norms(int_t index, int_t iter, int_t solution_dim):
+    residuals = np.empty(solution_dim, dtype=np.float64, order='F')
+    cdef real_t[::1] r_p = residuals
+
+    cdef int_t error = ck.ckrylov_get_space_iteration_residual_norms_(
+        index, iter, solution_dim, &r_p[0]
+    )
+    _assert(error)
+
+    return residuals
+
+# def get_space_last_residual_norms(int_t index, int_t solution_dim):
 #     residuals = np.empty(solution_dim, dtype=np.float64, order='F')
 #     cdef real_t[::1] r_p = residuals
 
-#     cdef int_t error = ck.ckrylov_get_space_iteration_residual_norms(
-#         index, iter, solution_dim, &r_p[0]
+#     cdef int_t error = ck.ckrylov_get_space_last_residual_norms(
+#         index, solution_dim, &r_p[0]
 #     )
 #     _assert(error)
 

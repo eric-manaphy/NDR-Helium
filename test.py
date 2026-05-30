@@ -42,7 +42,7 @@ def run_calculation(Z, N_elec, zetas, mode="hf"):
         occ = scf_res["n_elec"]
         virt = n_spin - occ
         # full_dim = occ*(occ-1)*virt*(virt-1)
-        full_dim = comb(virt, occ, exact=True)
+        full_dim = comb(virt, occ, exact=True) + 1
         solution_dim = 1
         basis_dim = 1
         e_mat = np.empty(full_dim, dtype=np.float64, order='F')
@@ -54,11 +54,8 @@ def run_calculation(Z, N_elec, zetas, mode="hf"):
                     for b in range(occ, a):
                         sum = e[a]+e[b]-e[i]-e[j]
                         e_mat[v_idx] = sum
-                        # e_mat[get_multi_index(j,i,a,b,occ,virt)] = sum
-                        # e_mat[get_multi_index(i,j,b,a,occ,virt)] = sum
-                        # e_mat[get_multi_index(j,i,b,a,occ,virt)] = sum
                         v_idx += 1
-        e_mat[0] = 0.000001
+        e_mat[0] = 0.01
 
         lk.initialize()
         index = lk.add_space(lk.real_kind, lk.symmetric_structure, lk.eigenvalue_equation,
@@ -67,55 +64,56 @@ def run_calculation(Z, N_elec, zetas, mode="hf"):
         # vectors[5] = 1.0
         # vectors = np.random.rand(full_dim)
         # lk.set_real_space_vectors(index, vectors)
-        # lk.set_space_preconditioner(index, 'd')
-        # lk.set_space_diagonal(index, np.diag(e_mat))
+        lk.set_space_preconditioner(index, 'd')
+        lk.set_space_diagonal(index, full_dim, e_mat)
         lk.set_real_space_vectors_from_diagonal(index, full_dim, basis_dim, e_mat)
         def multiply(m, n, vectors, products):
-            # Calculate c_0 and first term
-            c_0 = 0
-            v_idx = 0
+            # Calculate c_0, first term, and last term
+            c_0 = vectors[0]
+            d_0 = 0
+            v_idx = 1
             for i in range(1, occ):
                 for j in range(0, i):
                     for a in range(occ+1, n_spin):
                         for b in range(occ, a):
                             ijab = vectors[v_idx]
-                            c_0 += (2*g_spin[i,j,a,b]-g_spin[j,i,a,b]-g_spin[i,j,b,a])*ijab
+                            d_0 += 2*(g_spin[i,j,a,b]-g_spin[i,j,b,a])*ijab
                             # Not sure if I can guarantee products is already initalized
                             # So I'll just initialize (the relevant indices) here
-                            products[v_idx] = (e[a]+e[b]-e[i]-e[j])*ijab
+                            products[v_idx] = e_mat[v_idx]*ijab - (g_spin[a,b,i,j]-g_spin[a,b,j,i])*c_0/2
                             v_idx += 1
-
+            products[0] = d_0
             # Calculate occ subloop (second term)
-            curr_idx = 0
+            curr_idx = 1
             for i in range(1, occ):
                 for j in range(0, i):
-                    v_sub_idx = 0
+                    v_sub_idx = 1
                     for l in range(1, occ):
                         for k in range(0, l):
                             v_idx = curr_idx
                             for a in range(occ+1, n_spin):
                                 for b in range(occ, a):
-                                    products[v_idx] += vectors[v_sub_idx]*(-g_spin[l,k,j,i]+g_spin[k,l,j,i])
+                                    products[v_idx] -= vectors[v_sub_idx]*(g_spin[l,k,j,i]-g_spin[k,l,j,i])
                                     v_idx += 1
                                     v_sub_idx += 1
                     curr_idx = v_idx
 
-            # Calculate virt subloop (second term) and everything else
-            v_idx = 0
+            # Calculate virt subloop (second term)
+            v_idx = 1
+            curr_idx = 1
             for i in range(1, occ):
                 for j in range(0, i):
                     for a in range(occ+1, n_spin):
                         for b in range(occ, a):
-                            v_sub_idx = 0
+                            v_sub_idx = curr_idx
                             ijab = 0
                             for d in range(occ+1, n_spin):
                                 for c in range(occ, d):
-                                    ijab += vectors[v_sub_idx]*(g_spin[a,b,c,d]+g_spin[a,b,d,c])
+                                    ijab += vectors[v_sub_idx]*(g_spin[a,b,c,d]-g_spin[a,b,d,c])
                                     v_sub_idx += 1
-                            products[v_idx] = (
-                                products[v_idx] + ijab - (g_spin[a,b,i,j]-g_spin[a,b,j,i])*c_0/2
-                            )
+                            products[v_idx] += ijab
                             v_idx += 1
+                    curr_idx = v_sub_idx
 
             return 0
         lk.solve_real_equation(index, multiply)
