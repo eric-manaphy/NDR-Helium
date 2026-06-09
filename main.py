@@ -391,23 +391,23 @@ def run_ci(scf_res, iteration = 1):
 if __name__ == "__main__":
     np.set_printoptions(suppress=True)
 
-    Z = 2
+    Z = 1
     N = 2
 
     my_zetas = Zetas.TZVP
 
-    factor = 1.7/2.7
+    factor = 1.7/0.7
 
     my_zetas = [
         [z / factor for z in shell] for shell in my_zetas
     ]
 
-    result = run_calculation(Z, N, my_zetas, mode="ndr")
+    # result = run_calculation(Z, N, my_zetas, mode="ndr")
 
-    with open("fullci_tzvp_new.json", 'w') as file:
-        json.dump(result, file, cls=NumpyEncoder)
-    # with open("h_fullci_tzvp_new.json", 'r') as file:
-    #     result = json.load(file, object_hook=list_to_np)
+    # with open("h_fullci_tzvp_new.json", 'w') as file:
+    #     json.dump(result, file, cls=NumpyEncoder)
+    with open("h_fullci_tzvp_new.json", 'r') as file:
+        result = json.load(file, object_hook=list_to_np)
 
     print(f"HF Energies: {result['orb_energies']}")
 
