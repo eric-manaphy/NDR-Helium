@@ -1,6 +1,6 @@
 import numpy as np
 import json
-from scipy.linalg import eigh, sqrtm
+from scipy.linalg import eigh, block_diag
 from src.zetas import Zetas
 from src import make_basis
 from src.solver.hf_scf import scf, group_basis_by_lm
@@ -82,40 +82,38 @@ def multiply(vectors, products, occ, virt, g_spin, e_diff, f_c):
         curr_idx = 1
         for i in range(1, occ):
             for j in range(0, i):
-                j_idx = flatten_index(j, 0, occ+1, occ, occ, virt)
-                for k in range(0, j):
+                for k in range(j+1, occ):
                     v_idx = curr_idx
+                    j_idx = flatten_index(k, j, occ+1, occ, occ, virt)
                     for a in range(occ+1, n_spin):
                         for b in range(occ, a):
-                            products[v_idx] -= f_c[k, j] * vectors[j_idx]
+                            products[v_idx] += f_c[k, i] * vectors[j_idx]
                             v_idx += 1
                             j_idx += 1
-
-                i_idx = curr_idx
-                for k in range(j, i):
+                for k in range(i+1, occ):
                     v_idx = curr_idx
+                    i_idx = flatten_index(k, i, occ+1, occ, occ, virt)
+                    for a in range(occ+1, n_spin):
+                        for b in range(occ, a):
+                            products[v_idx] -= f_c[k, j] * vectors[i_idx]
+                            v_idx += 1
+                            i_idx += 1
+                for k in range(0, j):
+                    v_idx = curr_idx
+                    j_idx = flatten_index(j, k, occ+1, occ, occ, virt)
+                    for a in range(occ+1, n_spin):
+                        for b in range(occ, a):
+                            products[v_idx] -= f_c[k, i] * vectors[j_idx]
+                            v_idx += 1
+                            j_idx += 1
+                for k in range(0, i):
+                    v_idx = curr_idx
+                    i_idx = flatten_index(i, k, occ+1, occ, occ, virt)
                     for a in range(occ+1, n_spin):
                         for b in range(occ, a):
                             products[v_idx] += f_c[k, j] * vectors[i_idx]
                             v_idx += 1
                             i_idx += 1
-                
-                # k = i
-                v_idx = curr_idx
-                for a in range(occ+1, n_spin):
-                    for b in range(occ, a):
-                        products[v_idx] += f_c[i, i] * vectors[v_idx]
-                        v_idx += 1
-
-                for k in range(i+1, occ):
-                    v_idx = curr_idx
-                    i_idx = flatten_index(k, i, occ+1, occ, occ, virt)
-                    j_idx = flatten_index(k, j, occ+1, occ, occ, virt)
-                    for a in range(occ+1, n_spin):
-                        for b in range(occ, a):
-                            products[v_idx] += -f_c[k, j] * vectors[i_idx] + f_c[k, i] * vectors[j_idx]
-                            v_idx += 1
-                
                 curr_idx = v_idx
 
         v_idx = 1
@@ -124,29 +122,90 @@ def multiply(vectors, products, occ, virt, g_spin, e_diff, f_c):
                 for a in range(occ+1, n_spin):
                     for b in range(occ, a):
                         val = 0
-
+                        for c in range(b+1, n_spin):
+                            val -= f_c[c, a] * vectors[flatten_index(i, j, c, b, occ, virt)]
+                        for c in range(a+1, n_spin):
+                            val += f_c[c, b] * vectors[flatten_index(i, j, c, a, occ, virt)]
                         v_sub_idx = flatten_index(i, j, b, occ, occ, virt)
                         for c in range(occ, b):
-                            val -= f_c[c, a] * vectors[v_sub_idx]
+                            val += f_c[c, a] * vectors[v_sub_idx]
                             v_sub_idx += 1
-
-                        v_sub_idx = v_idx
-                        for c in range(b, a):
-                            val += f_c[c, b] * vectors[v_sub_idx]
+                        v_sub_idx = flatten_index(i, j, a, occ, occ, virt)
+                        for c in range(occ, a):
+                            val -= f_c[c, b] * vectors[v_sub_idx]
                             v_sub_idx += 1
-                        
-                        v_sub_idx = v_idx
-
-                        # c = a
-                        val -= f_c[a, a] * vectors[v_sub_idx]
-                        v_sub_idx -= a - occ
-
-                        for c in range(a+1, n_spin):
-                            val += f_c[c, a] * vectors[v_sub_idx] - f_c[c, b] * vectors[v_sub_idx + (a - b)]
-                            v_sub_idx += c - occ
-
                         products[v_idx] += val
                         v_idx += 1
+
+        # v_idx = 1
+        # curr_idx = 1
+        # for i in range(1, occ):
+        #     for j in range(0, i):
+        #         j_idx = flatten_index(j, 0, occ+1, occ, occ, virt)
+        #         for k in range(0, j):
+        #             v_idx = curr_idx
+        #             for a in range(occ+1, n_spin):
+        #                 for b in range(occ, a):
+        #                     products[v_idx] -= f_c[k, j] * vectors[j_idx]
+        #                     v_idx += 1
+        #                     j_idx += 1
+
+        #         i_idx = curr_idx
+        #         for k in range(j, i):
+        #             v_idx = curr_idx
+        #             for a in range(occ+1, n_spin):
+        #                 for b in range(occ, a):
+        #                     products[v_idx] += f_c[k, j] * vectors[i_idx]
+        #                     v_idx += 1
+        #                     i_idx += 1
+                
+        #         # k = i
+        #         v_idx = curr_idx
+        #         for a in range(occ+1, n_spin):
+        #             for b in range(occ, a):
+        #                 products[v_idx] += f_c[i, i] * vectors[v_idx]
+        #                 v_idx += 1
+
+        #         for k in range(i+1, occ):
+        #             v_idx = curr_idx
+        #             i_idx = flatten_index(k, i, occ+1, occ, occ, virt)
+        #             j_idx = flatten_index(k, j, occ+1, occ, occ, virt)
+        #             for a in range(occ+1, n_spin):
+        #                 for b in range(occ, a):
+        #                     products[v_idx] += -f_c[k, j] * vectors[i_idx] + f_c[k, i] * vectors[j_idx]
+        #                     v_idx += 1
+                
+        #         curr_idx = v_idx
+
+        # v_idx = 1
+        # for i in range(1, occ):
+        #     for j in range(0, i):
+        #         for a in range(occ+1, n_spin):
+        #             for b in range(occ, a):
+        #                 val = 0
+
+        #                 v_sub_idx = flatten_index(i, j, b, occ, occ, virt)
+        #                 for c in range(occ, b):
+        #                     val -= f_c[c, a] * vectors[v_sub_idx]
+        #                     v_sub_idx += 1
+
+        #                 v_sub_idx = v_idx
+        #                 for c in range(b, a):
+        #                     val += f_c[c, b] * vectors[v_sub_idx]
+        #                     v_sub_idx += 1
+                        
+        #                 v_sub_idx = v_idx
+
+        #                 # c = a
+        #                 val -= f_c[a, a] * vectors[v_sub_idx]
+        #                 v_sub_idx -= a - occ
+
+        #                 for c in range(a+1, n_spin):
+        #                     val += f_c[c, a] * vectors[v_sub_idx] - f_c[c, b] * vectors[v_sub_idx + (a - b)]
+        #                     v_sub_idx += c - occ
+
+        #                 products[v_idx] += val
+        #                 v_idx += 1
 
     return 0
 
@@ -289,6 +348,8 @@ def run_calculation(Z, N_elec, zetas, mode="hf"):
             # scf_res["H_core"] = h_spin
             # scf_res["g_spin"] = g_spin
 
+            scf_res.update(ci_res)
+
         return scf_res
 
     return scf_res
@@ -296,18 +357,19 @@ def run_calculation(Z, N_elec, zetas, mode="hf"):
 def run_ci(scf_res, iteration = 1):
     print(f"Current CI Iteration: {iteration}")
     f_c = None
-    C = scf_res["coefficients"]
     if iteration > 1:
         C_fci = scf_res["fci_coefficients"]
         e = scf_res["fci_orb_energies"]
-        f_c = C_fci.T @ scf_res["F_c"] @ C_fci
+        f_c = C_fci.T @ (scf_res["fci_Fock"] - scf_res["fci_F_0"]) @ C_fci
+        h_spin = C_fci.T @ result["h_spin"] @ C_fci
+        g_spin = C_fci.T @ C_fci.T @ result["g_spin"] @ C_fci @ C_fci
     else:
+        C = scf_res["coefficients"]
         e = [e_spin for e_orb in scf_res["orb_energies"] for e_spin in (e_orb, e_orb)]
-    
-    h_ao = scf_res["H_core"]
-    h_mo = C.T @ h_ao @ C
-    eri_mo = ao_to_mo_transform(scf_res["eri"], C)
-    h_spin, g_spin = build_spin_orbital_integrals(h_mo, eri_mo)
+        h_ao = scf_res["H_core"]
+        h_mo = C.T @ h_ao @ C
+        eri_mo = ao_to_mo_transform(scf_res["eri"], C)
+        h_spin, g_spin = build_spin_orbital_integrals(h_mo, eri_mo)
 
     n_spin = h_spin.shape[0]
     occ = scf_res["n_elec"]
@@ -374,286 +436,91 @@ def run_ci(scf_res, iteration = 1):
     
     print(f"NDR orbital energies: {eigenvalues}")
 
-    _, eigenvectors_rhf = eigh(f_spin[::2, ::2])
-
     scf_res["fci_coefficients"] = eigenvectors
-    scf_res["coefficients"] = eigenvectors_rhf
     scf_res["fci_orb_energies"] = eigenvalues
     scf_res["fci_Fock"] = f_spin
     scf_res["fci_density"] = one_rdm
     scf_res["fci_F_0"] = f_0
     scf_res["F_c"] = f_spin - f_0
-    # scf_res["H_core"] = h_spin
-    # scf_res["g_spin"] = g_spin
+    scf_res["h_spin"] = h_spin
+    scf_res["g_spin"] = g_spin
 
     return scf_res
 
 if __name__ == "__main__":
     np.set_printoptions(suppress=True)
 
-    Z = 1
+    Z = 2
     N = 2
 
     my_zetas = Zetas.TZVP
 
-    factor = 1.7/0.7
+    # factor = 1.7/0.7
 
-    my_zetas = [
-        [z / factor for z in shell] for shell in my_zetas
-    ]
+    # my_zetas = [
+    #     [z / factor for z in shell] for shell in my_zetas
+    # ]
 
     # result = run_calculation(Z, N, my_zetas, mode="ndr")
 
-    # with open("h_fullci_tzvp_new.json", 'w') as file:
+    # with open("fullci_tzvp_new.json", 'w') as file:
     #     json.dump(result, file, cls=NumpyEncoder)
-    with open("h_fullci_tzvp_new.json", 'r') as file:
+    with open("fullci_tzvp_new.json", 'r') as file:
         result = json.load(file, object_hook=list_to_np)
+    
+    # print(f"HF Energies: {result['orb_energies']}")
 
-    print(f"HF Energies: {result['orb_energies']}")
-
-    eri = result["eri"]
-    print(f'AO 0000 ERI: {eri[0,0,0,0]}')
-
-    eri_mo = ao_to_mo_transform(result["eri"], result["coefficients"])
-    print(f'MO 0000 ERI: {eri_mo[0,0,0,0]}')
-
+    occ = N
     C = result["coefficients"]
     h_core = result["H_core"]
     h_mo = C.T @ h_core @ C
-
+    eri = result["eri"]
+    eri_mo = ao_to_mo_transform(result["eri"], result["coefficients"])
     h_spin, g_spin = build_spin_orbital_integrals(h_mo, eri_mo)
-
-    ijij = 0
-    ijji = 0
-    for i in range(2):
-        for j in range(2):
-            ijij += g_spin[i,j,i,j]
-            ijji += g_spin[i,j,j,i]
-
-    print(f'ijij: {0.5 * ijij}')
-    print(f'ijji: {0.5 * ijji}')    
-
     n_spin = h_spin.shape[0]
 
-    one_rdm_0 = np.zeros((n_spin, n_spin), dtype=np.float64)
-    np.fill_diagonal(one_rdm_0[:2, :2], 1)
+    result["h_spin"] = h_spin
+    result["g_spin"] = g_spin
 
-    J, K = calculate_JK(one_rdm_0, g_spin, n_spin)
+    # print("F_ekt")
+    # trdm = result["fci_two_rdm"]
+    rdm = result["fci_density"]
+    # F_ekt, F_ekt_1, F_ekt_2 = build_EKT_Fock(h_spin, rdm, g_spin, trdm)
 
-    print(f'2e: {result["E_total"] - np.trace(one_rdm_0 @ h_spin)}')
-    print(f'J: {0.5 * np.trace(one_rdm_0 @ J)}')
-    print(f'K: {0.5 * np.trace(one_rdm_0 @ K)}')
+    J, K = calculate_JK(rdm, g_spin, n_spin)
 
+    F = h_spin + J + K
+
+    result["fci_Fock"] = F
+
+    eigenvalues, eigenvectors = eigh(rdm)
+    print(eigenvalues)
+    c0 = eigenvectors[:, -1]
+    c1 = eigenvectors[:, -2]
+
+    result["fci_coefficients"] = eigenvectors
+
+    rdm_0 = np.outer(c0, c0) + np.outer(c1, c1)
+    J, K = calculate_JK(rdm_0, g_spin, n_spin)
     F_0 = h_spin + J + K
 
-    print(F_0)
+    result["fci_F_0"] = F_0
 
-    # with open("fullci.json", 'r') as file:
-    #     result = json.load(file, object_hook=list_to_np)
+    # eigenvalues, eigenvectors = eigh(F_ekt)
 
-    if "fci_density" in result:
-        rdm = result["fci_density"]
+    # result["fci_orb_energies"] = eigenvalues
+    run_ci(result, 2)
 
-        basis = make_basis(*my_zetas)
-        l_values, radial_indices, lm_indices = group_basis_by_lm(basis)
+    # print("Canonical")
+    # F_no = eigenvectors.T @ F @ eigenvectors
+    # occ_vals, occ_vecs = eigh(F_no[:occ, :occ])
+    # virt_vals, virt_vecs = eigh(F_no[occ:, occ:])
+    # print(occ_vals)
+    # print(virt_vals)
+    
+    # result["coefficients"] = block_diag(occ_vecs, virt_vecs)
+    # result["fci_orb_energies"] = np.concatenate([occ_vals, virt_vals])
+    # result["fci_Fock"] = F_no
+    # result["fci_F_0"] = eigenvectors.T @ F_0 @ eigenvectors
 
-        J, K = calculate_JK(rdm, g_spin, n_spin)
-
-        print(result["E_total"] - np.trace(rdm @ h_spin))
-        print(0.5 * np.trace(rdm @ J))
-        print(0.5 * np.trace(rdm @ K))
-
-        F = h_spin + J + K
-
-        eigenvalues, eigenvectors = eigh(F)
-
-        print(eigenvalues)
-        print(f"<yy0>: {np.trace(rdm @ one_rdm_0)}")
-        C = result["fci_coefficients"]
-
-        F_c = F - F_0
-
-        occ = 2
-
-        for i in range(occ):
-            v = eigenvectors[:, i]
-            print(f"<{i}|F[y0]|{i}>: {v.T @ F_0 @ v}")
-
-        for i in range(occ):
-            v = eigenvectors[:, i]
-            print(f"<{i}|F[yc]|{i}>: {v.T @ F_c @ v}")
-
-        occ = 2
-
-        temp = []
-
-        for i in range(occ):
-            for a in range(occ, n_spin):
-                value = eigenvectors[:, i].T @ F_0 @ eigenvectors[:, a]
-                temp.append(abs(value))
-                print(f"<{i}|F[y0]|{a}>: {value}")
-
-        temp = []
-        for i in range(occ):
-            for a in range(occ, n_spin):
-                value = eigenvectors[:, i].T @ F @ eigenvectors[:, a]
-                temp.append(abs(value))
-                print(f"<{i}|F[y]|{a}>: {value}")
-        print(f"Max: {max(temp)}")
-
-        temp = []
-        for i in range(occ):
-            for a in range(occ, n_spin):
-                value = eigenvectors[:, i].T @ rdm @ eigenvectors[:, a]
-                temp.append(abs(value))
-                print(f"y({i}, {a}): {value}")
-        print(f"Max: {max(temp)}")
-
-        rdm_c = rdm - one_rdm_0
-        rdm_s = np.zeros(rdm.shape)
-
-        eps_s, C_s = eigh(rdm_c[:12, :12])
-        for p in range(len(eps_s)):
-            vec = C_s[:, p]
-            rdm_s += eps_s[p] * (vec @ vec.T)
-
-        rdm_p = np.zeros(rdm.shape)
-
-        eps_s, C_s = eigh(rdm_c[12:24, 12:24])
-        for p in range(len(eps_s)):
-            vec = C_s[:, p]
-            rdm_p += eps_s[p] * (vec @ vec.T)
-
-        rdm_d = np.zeros(rdm.shape)
-
-        eps_s, C_s = eigh(rdm_c[24:, 24:])
-        for p in range(len(eps_s)):
-            vec = C_s[:, p]
-            rdm_d += eps_s[p] * (vec @ vec.T)
-
-        rdm_c = rdm_s+rdm_p+rdm_d
-
-        J, K = calculate_JK(rdm_c, g_spin, n_spin)
-
-        F_c = h_spin + J + K
-
-        for i in range(occ):
-            v = eigenvectors[:, i]
-            print(f"<{i}|F[yc]|{i}>: {v.T @ F_c @ v}")
-
-        # n = rdm_c.shape[0]
-        # C_new_full = np.zeros((n, n))
-        # eps_new_full = np.zeros(n)
-        # rdm_c_new = []
-        # col = 0
-        # for l in l_values:
-        #     idx_rad = radial_indices[l] * 2
-        #     eps_l, C_l = eigh(F_c[np.ix_(idx_rad, idx_rad)])
-        #     rdm_l = np.zeros((2*l+1, 2*l+1))
-        #     for a in range(len(eps_l)):
-        #         for m in range(-l, l + 1):
-        #             C_new_full[lm_indices[(l, m)], col] = C_l[:, a]
-        #             eps_new_full[col] = eps_l[a]
-        #             col += 1
-
-        # F_c_new = np.zeros(F_c.shape)
-        
-        print("F_ekt")
-        trdm = result["fci_two_rdm"]
-        F_ekt, F_ekt_1, F_ekt_2 = build_EKT_Fock(h_spin, rdm, g_spin, trdm)
-        eigenvalues, eigenvectors = eigh(F_ekt, rdm)
-        print(eigenvalues)
-        c0 = eigenvectors[:, -1]
-        c1 = eigenvectors[:, -2]
-
-        occs, orbs = eigh(rdm)
-        sqrt_rdm = orbs @ np.diag(np.sqrt(occs)) @ orbs.T
-
-        ndr_rdm = sqrt_rdm @ (np.outer(c0, c0) + np.outer(c1, c1)) @ sqrt_rdm
-        print(np.trace(ndr_rdm))
-        print(f"<yy0>: {np.trace(rdm @ ndr_rdm)}")
-
-        # print("Canonical")
-        # F_no = eigenvectors.T @ F @ eigenvectors
-        # occ_vals, occ_vecs = eigh(F_no[-occ:, -occ:])
-        # virt_vals, virt_vecs = eigh(F_no[:-occ, :-occ])
-        # all_vals, all_vecs = eigh(F_no)
-        # print(occ_vals)
-        # print(virt_vals)
-        # print(all_vals)
-
-        # F_no = eigenvectors @ F @ eigenvectors.T
-        # occ_vals, occ_vecs = eigh(F_no[-occ:, -occ:])
-        # virt_vals, virt_vecs = eigh(F_no[:-occ, :-occ])
-        # all_vals, all_vecs = eigh(F_no)
-        # print(occ_vals)
-        # print(virt_vals)
-        # print(all_vals)
-
-        print("F_ekt_orth")
-        inv_sqrt_rdm = orbs @ np.diag(np.sqrt(np.reciprocal(occs))) @ orbs.T
-        F_ekt_orth = inv_sqrt_rdm @ F_ekt @ inv_sqrt_rdm
-        eigenvalues, eigenvectors = eigh(F_ekt_orth)
-        print(eigenvalues)
-        c0 = eigenvectors[:, -1]
-        c1 = eigenvectors[:, -2]
-        rdm_0 = np.outer(c0, c0) + np.outer(c1, c1)
-        print(np.trace(rdm_0))
-        print(f"<yy0>: {np.trace(rdm @ rdm_0)}")
-
-        # print("Canonical")
-        # F_no = eigenvectors.T @ F @ eigenvectors
-        # occ_vals, occ_vecs = eigh(F_no[-occ:, -occ:])
-        # virt_vals, virt_vecs = eigh(F_no[:-occ, :-occ])
-        # all_vals, all_vecs = eigh(F_no)
-        # print(occ_vals)
-        # print(virt_vals)
-        # print(all_vals)
-
-        # F_no = eigenvectors @ F @ eigenvectors.T
-        # occ_vals, occ_vecs = eigh(F_no[-occ:, -occ:])
-        # virt_vals, virt_vecs = eigh(F_no[:-occ, :-occ])
-        # all_vals, all_vecs = eigh(F_no)
-        # print(occ_vals)
-        # print(virt_vals)
-        # print(all_vals)
-
-        print("F_ekt no metric")
-        eigenvalues, eigenvectors = eigh(F_ekt)
-        print(eigenvalues)
-        c0 = eigenvectors[:, 0]
-        c1 = eigenvectors[:, 1]
-
-        rdm_0 = np.outer(c0, c0) + np.outer(c1, c1)
-        print(np.trace(rdm_0))
-        print(f"<yy0>: {np.trace(rdm @ rdm_0)}")
-        print(f"<yy0>: {np.trace(np.diag(occs) @ rdm_0)}")
-
-        print("Canonical")
-        F_no = eigenvectors.T @ F @ eigenvectors
-        occ_vals, occ_vecs = eigh(F_no[:occ, :occ])
-        virt_vals, virt_vecs = eigh(F_no[occ:, occ:])
-        # all_vals, all_vecs = eigh(F_no)
-        print(occ_vals)
-        print(virt_vals)
-        # print(all_vals)
-
-        occs, natural_orbitals, ndr_coeffs = get_natural_orbitals(rdm, N)
-
-        print(occs[0] + occs[1])
-
-        c0 = natural_orbitals[:, 0]
-        c1 = natural_orbitals[:, 1]
-        
-        rdm_0 = np.outer(c0, c0) + np.outer(c1, c1)
-        print(np.trace(rdm_0))
-        print(f"<yy0>: {np.trace(rdm @ rdm_0)}")
-
-        # F_no = eigenvectors @ F @ eigenvectors.T
-        # occ_vals, occ_vecs = eigh(F_no[:occ, :occ])
-        # virt_vals, virt_vecs = eigh(F_no[occ:, occ:])
-        # all_vals, all_vecs = eigh(F_no)
-        # print(occ_vals)
-        # print(virt_vals)
-        # print(all_vals)
-
+    # result = run_ci(result, 2)
