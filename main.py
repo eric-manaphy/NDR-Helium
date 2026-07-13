@@ -209,6 +209,280 @@ def multiply(vectors, products, occ, virt, g_spin, e_diff, f_c):
 
     return 0
 
+def multiply2(vectors, products, occ, virt, g_spin, e_diff, f_c):
+    # Calculate c_0, first term, and last term
+    c_0 = vectors[0]
+    d_0 = 0
+
+    n_spin = occ+virt
+    n_virt = virt * (virt - 1) // 2
+
+    v_idx = 1
+    for i in range(1, occ):
+        for j in range(0, i):
+            for a in range(occ+1, n_spin):
+                for b in range(occ, a):
+                    ijab = vectors[v_idx]
+                    d_0 += -(g_spin[i,j,a,b]-g_spin[i,j,b,a])*ijab
+                    # Not sure if I can guarantee products is already initalized
+                    # So I'll just initialize (the relevant indices) here
+                    products[v_idx] = -(g_spin[a,b,i,j]-g_spin[a,b,j,i])*c_0
+                    v_idx += 1
+    products[0] = d_0
+
+    v_idx = 1
+    curr_idx = 1
+    for i in range(1, occ):
+        for j in range(0, i):
+            for k in range(j+1, occ):
+                v_idx = curr_idx
+                j_idx = flatten_index(k, j, occ+1, occ, occ, virt)
+                for a in range(occ+1, n_spin):
+                    for b in range(occ, a):
+                        products[v_idx] -= f_c[k, i] * vectors[j_idx]
+                        v_idx += 1
+                        j_idx += 1
+            for k in range(i+1, occ):
+                v_idx = curr_idx
+                i_idx = flatten_index(k, i, occ+1, occ, occ, virt)
+                for a in range(occ+1, n_spin):
+                    for b in range(occ, a):
+                        products[v_idx] += f_c[k, j] * vectors[i_idx]
+                        v_idx += 1
+                        i_idx += 1
+            for k in range(0, j):
+                v_idx = curr_idx
+                j_idx = flatten_index(j, k, occ+1, occ, occ, virt)
+                for a in range(occ+1, n_spin):
+                    for b in range(occ, a):
+                        products[v_idx] += f_c[k, i] * vectors[j_idx]
+                        v_idx += 1
+                        j_idx += 1
+            for k in range(0, i):
+                v_idx = curr_idx
+                i_idx = flatten_index(i, k, occ+1, occ, occ, virt)
+                for a in range(occ+1, n_spin):
+                    for b in range(occ, a):
+                        products[v_idx] -= f_c[k, j] * vectors[i_idx]
+                        v_idx += 1
+                        i_idx += 1
+            curr_idx = v_idx
+
+    v_idx = 1
+    for i in range(1, occ):
+        for j in range(0, i):
+            for a in range(occ+1, n_spin):
+                for b in range(occ, a):
+                    val = 0
+                    for c in range(b+1, n_spin):
+                        val += f_c[c, a] * vectors[flatten_index(i, j, c, b, occ, virt)]
+                    for c in range(a+1, n_spin):
+                        val -= f_c[c, b] * vectors[flatten_index(i, j, c, a, occ, virt)]
+                    v_sub_idx = flatten_index(i, j, b, occ, occ, virt)
+                    for c in range(occ, b):
+                        val -= f_c[c, a] * vectors[v_sub_idx]
+                        v_sub_idx += 1
+                    v_sub_idx = flatten_index(i, j, a, occ, occ, virt)
+                    for c in range(occ, a):
+                        val += f_c[c, b] * vectors[v_sub_idx]
+                        v_sub_idx += 1
+                    products[v_idx] += val
+                    v_idx += 1
+
+    # Calculate occ subloop (second term)
+    curr_idx = 1
+    for i in range(1, occ):
+        for j in range(0, i):
+            v_sub_idx = 1
+            for l in range(1, occ):
+                for k in range(0, l):
+                    v_idx = curr_idx
+                    for a in range(occ+1, n_spin):
+                        for b in range(occ, a):
+                            products[v_idx] -= vectors[v_sub_idx]*(g_spin[l,k,j,i]-g_spin[k,l,j,i])
+                            v_idx += 1
+                            v_sub_idx += 1
+            curr_idx = v_idx
+
+    # Calculate virt subloop (second term)
+    v_idx = 1
+    curr_idx = 1
+    for i in range(1, occ):
+        for j in range(0, i):
+            for a in range(occ+1, n_spin):
+                for b in range(occ, a):
+                    v_sub_idx = curr_idx
+                    ijab = 0
+                    for d in range(occ+1, n_spin):
+                        for c in range(occ, d):
+                            ijab += vectors[v_sub_idx]*(g_spin[a,b,c,d]-g_spin[a,b,d,c])
+                            v_sub_idx += 1
+                    products[v_idx] += ijab
+                    v_idx += 1
+            curr_idx = v_sub_idx
+
+    return 0
+
+def only_fy0(vectors, products, occ, virt, g_spin, e_diff, f_c):
+    # Calculate c_0, first term, and last term
+    c_0 = vectors[0]
+    d_0 = 0
+
+    n_spin = occ+virt
+    n_virt = virt * (virt - 1) // 2
+
+    v_idx = 1
+    for i in range(1, occ):
+        for j in range(0, i):
+            for a in range(occ+1, n_spin):
+                for b in range(occ, a):
+                    ijab = vectors[v_idx]
+                    d_0 += -(g_spin[i,j,a,b]-g_spin[i,j,b,a])*ijab
+                    products[v_idx] = 0
+                    v_idx += 1
+    products[0] = d_0
+
+    v_idx = 1
+    curr_idx = 1
+    for i in range(1, occ):
+        for j in range(0, i):
+            for k in range(j+1, occ):
+                v_idx = curr_idx
+                j_idx = flatten_index(k, j, occ+1, occ, occ, virt)
+                for a in range(occ+1, n_spin):
+                    for b in range(occ, a):
+                        products[v_idx] -= f_c[k, i] * vectors[j_idx]
+                        v_idx += 1
+                        j_idx += 1
+            for k in range(i+1, occ):
+                v_idx = curr_idx
+                i_idx = flatten_index(k, i, occ+1, occ, occ, virt)
+                for a in range(occ+1, n_spin):
+                    for b in range(occ, a):
+                        products[v_idx] += f_c[k, j] * vectors[i_idx]
+                        v_idx += 1
+                        i_idx += 1
+            for k in range(0, j):
+                v_idx = curr_idx
+                j_idx = flatten_index(j, k, occ+1, occ, occ, virt)
+                for a in range(occ+1, n_spin):
+                    for b in range(occ, a):
+                        products[v_idx] += f_c[k, i] * vectors[j_idx]
+                        v_idx += 1
+                        j_idx += 1
+            for k in range(0, i):
+                v_idx = curr_idx
+                i_idx = flatten_index(i, k, occ+1, occ, occ, virt)
+                for a in range(occ+1, n_spin):
+                    for b in range(occ, a):
+                        products[v_idx] -= f_c[k, j] * vectors[i_idx]
+                        v_idx += 1
+                        i_idx += 1
+            curr_idx = v_idx
+
+    v_idx = 1
+    for i in range(1, occ):
+        for j in range(0, i):
+            for a in range(occ+1, n_spin):
+                for b in range(occ, a):
+                    val = 0
+                    for c in range(b+1, n_spin):
+                        val += f_c[c, a] * vectors[flatten_index(i, j, c, b, occ, virt)]
+                    for c in range(a+1, n_spin):
+                        val -= f_c[c, b] * vectors[flatten_index(i, j, c, a, occ, virt)]
+                    v_sub_idx = flatten_index(i, j, b, occ, occ, virt)
+                    for c in range(occ, b):
+                        val -= f_c[c, a] * vectors[v_sub_idx]
+                        v_sub_idx += 1
+                    v_sub_idx = flatten_index(i, j, a, occ, occ, virt)
+                    for c in range(occ, a):
+                        val += f_c[c, b] * vectors[v_sub_idx]
+                        v_sub_idx += 1
+                    products[v_idx] += val
+                    v_idx += 1
+
+    return 0
+
+def only_fyc(vectors, products, occ, virt, g_spin, e_diff, f_c):
+    # Calculate c_0, first term, and last term
+    c_0 = vectors[0]
+    d_0 = 0
+
+    n_spin = occ+virt
+    n_virt = virt * (virt - 1) // 2
+
+    v_idx = 1
+    for i in range(1, occ):
+        for j in range(0, i):
+            for a in range(occ+1, n_spin):
+                for b in range(occ, a):
+                    ijab = vectors[v_idx]
+                    d_0 += -(g_spin[i,j,a,b]-g_spin[i,j,b,a])*ijab
+                    products[v_idx] = (e_diff[v_idx])*ijab
+                    v_idx += 1
+    products[0] = d_0
+
+    v_idx = 1
+    curr_idx = 1
+    for i in range(1, occ):
+        for j in range(0, i):
+            for k in range(j+1, occ):
+                v_idx = curr_idx
+                j_idx = flatten_index(k, j, occ+1, occ, occ, virt)
+                for a in range(occ+1, n_spin):
+                    for b in range(occ, a):
+                        products[v_idx] += f_c[k, i] * vectors[j_idx]
+                        v_idx += 1
+                        j_idx += 1
+            for k in range(i+1, occ):
+                v_idx = curr_idx
+                i_idx = flatten_index(k, i, occ+1, occ, occ, virt)
+                for a in range(occ+1, n_spin):
+                    for b in range(occ, a):
+                        products[v_idx] -= f_c[k, j] * vectors[i_idx]
+                        v_idx += 1
+                        i_idx += 1
+            for k in range(0, j):
+                v_idx = curr_idx
+                j_idx = flatten_index(j, k, occ+1, occ, occ, virt)
+                for a in range(occ+1, n_spin):
+                    for b in range(occ, a):
+                        products[v_idx] -= f_c[k, i] * vectors[j_idx]
+                        v_idx += 1
+                        j_idx += 1
+            for k in range(0, i):
+                v_idx = curr_idx
+                i_idx = flatten_index(i, k, occ+1, occ, occ, virt)
+                for a in range(occ+1, n_spin):
+                    for b in range(occ, a):
+                        products[v_idx] += f_c[k, j] * vectors[i_idx]
+                        v_idx += 1
+                        i_idx += 1
+            curr_idx = v_idx
+
+    v_idx = 1
+    for i in range(1, occ):
+        for j in range(0, i):
+            for a in range(occ+1, n_spin):
+                for b in range(occ, a):
+                    val = 0
+                    for c in range(b+1, n_spin):
+                        val -= f_c[c, a] * vectors[flatten_index(i, j, c, b, occ, virt)]
+                    for c in range(a+1, n_spin):
+                        val += f_c[c, b] * vectors[flatten_index(i, j, c, a, occ, virt)]
+                    v_sub_idx = flatten_index(i, j, b, occ, occ, virt)
+                    for c in range(occ, b):
+                        val += f_c[c, a] * vectors[v_sub_idx]
+                        v_sub_idx += 1
+                    v_sub_idx = flatten_index(i, j, a, occ, occ, virt)
+                    for c in range(occ, a):
+                        val -= f_c[c, b] * vectors[v_sub_idx]
+                        v_sub_idx += 1
+                    products[v_idx] += val
+                    v_idx += 1
+
+    return 0
+
 def run_calculation(Z, N_elec, zetas, mode="hf"):
     """
     mode: "hf"          -> Single Hartree-Fock run
@@ -360,7 +634,8 @@ def run_ci(scf_res, iteration = 1):
     if iteration > 1:
         C_fci = scf_res["fci_coefficients"]
         e = scf_res["fci_orb_energies"]
-        f_c = C_fci.T @ (scf_res["fci_Fock"] - scf_res["fci_F_0"]) @ C_fci
+        f_c = C_fci.T @ (result["fci_Fock"] - scf_res["fci_F_0"]) @ C_fci
+        # f_c = C_fci.T @ scf_res["fci_F_0"] @ C_fci
         h_spin = C_fci.T @ result["h_spin"] @ C_fci
         g_spin = C_fci.T @ C_fci.T @ result["g_spin"] @ C_fci @ C_fci
     else:
@@ -401,14 +676,18 @@ def run_ci(scf_res, iteration = 1):
     lk.set_real_option("max_residual_norm", 10e-6)
     index = lk.add_space(lk.Kind.REAL, lk.Structure.SYMMETRIC, lk.Equation.EIGENVALUE,
                             full_dim, solution_dim, basis_dim)
-    lk.set_space_preconditioner(index, 'j')
-    lk.set_space_diagonal(index, e_diff)
-    lk.set_real_space_vectors_from_diagonal(index, basis_dim, e_diff)
+    if iteration > 1:
+        lk.set_real_space_vectors(index, result["rci_coeffs"])
+    else:
+        lk.set_space_preconditioner(index, 'j')
+        lk.set_space_diagonal(index, e_diff)
+        lk.set_real_space_vectors_from_diagonal(index, basis_dim, e_diff)
+
     lk.solve_real_equation(index, multiply, occ, virt, g_spin, e_diff, f_c)
     final_eig = lk.get_space_eigenvalues(index, solution_dim)
     print(f"Final eigenvalue: {final_eig}")
-    with open("eigs", "a") as f:
-        f.write(f"{final_eig}\n")
+    # with open("eigs", "a") as f:
+    #     f.write(f"{final_eig}\n")
     ci_vec = lk.get_real_space_solutions(index, full_dim, solution_dim).flatten()
     # print(ci_vec)
     lk.finalize()
@@ -478,6 +757,7 @@ if __name__ == "__main__":
     eri_mo = ao_to_mo_transform(result["eri"], result["coefficients"])
     h_spin, g_spin = build_spin_orbital_integrals(h_mo, eri_mo)
     n_spin = h_spin.shape[0]
+    virt = n_spin - occ
 
     result["h_spin"] = h_spin
     result["g_spin"] = g_spin
@@ -498,7 +778,8 @@ if __name__ == "__main__":
     c0 = eigenvectors[:, -1]
     c1 = eigenvectors[:, -2]
 
-    result["fci_coefficients"] = eigenvectors
+    eigenvectors = np.fliplr(eigenvectors)
+    # result["fci_coefficients"] = eigenvectors
 
     rdm_0 = np.outer(c0, c0) + np.outer(c1, c1)
     J, K = calculate_JK(rdm_0, g_spin, n_spin)
@@ -506,10 +787,164 @@ if __name__ == "__main__":
 
     result["fci_F_0"] = F_0
 
-    # eigenvalues, eigenvectors = eigh(F_ekt)
+    rdm_c = rdm - rdm_0
 
-    # result["fci_orb_energies"] = eigenvalues
-    run_ci(result, 2)
+    uFuT = eigenvectors.T @ F @ eigenvectors
+    uFcuT = eigenvectors.T @ (F - F_0) @ eigenvectors
+    uTyu = eigenvectors.T @ rdm_c @ eigenvectors
+    print(np.trace(F @ rdm_c) - np.trace((F - F_0) @ rdm_c))
+    print(np.trace(uFuT @ uTyu) - np.trace(uFcuT @ uTyu))
+
+    uFuT = eigenvectors.T @ F_0 @ eigenvectors
+    uTyu = eigenvectors.T @ rdm_c @ eigenvectors
+    print(np.trace(F_0 @ rdm_c))
+    print(np.trace(uFuT @ uTyu))
+
+    result["rci_coeffs"] = np.insert(result['cisd_coeffs']['doubles'][:, 1], 0, result['cisd_coeffs']['C_0'])
+
+    # c_0 = result['cisd_coeffs']['C_0']
+    # singles = result['cisd_coeffs']['singles'][:, 1]
+    # doubles = result['cisd_coeffs']['doubles'][:, 1]
+
+    eigenvalues, eigenvectors = eigh(F)
+    print(eigenvalues)
+    result["fci_orb_energies"] = eigenvalues
+    result["fci_coefficients"] = eigenvectors
+
+    dets = result['determinants']
+    coeffs = result['vectors'][:, 0]
+    hf_det = int(dets[0])
+    occs = range(occ)
+    virts = range(occ, n_spin)
+
+    c0 = 0
+    singles = np.zeros((n_spin, n_spin))
+    doubles = np.zeros((n_spin, n_spin, n_spin, n_spin))
+
+    for det, coeff in zip(dets, coeffs):
+        det = int(det)
+        annihilated = [i for i in occs if not (det & (1 << i))]
+        created = [a for a in virts if det & (1 << a)]
+
+        if len(annihilated) == 0:
+            c0 = coeff
+        elif len(annihilated) == 1:
+            i =annihilated[0]
+            a = created[0]
+            singles[i, a] = coeff
+        elif len(annihilated) == 2:
+            i, j = annihilated
+            a, b = created
+            doubles[i, j, a, b] = coeff
+            doubles[j, i, a, b] = -coeff
+            doubles[i, j, b, a] = -coeff
+            doubles[j, i, b, a] = coeff
+
+    norm = 0
+    til_c_0 = 0
+    d = eigenvectors[0, 0] * eigenvectors[1, 1] - eigenvectors[0, 1] * eigenvectors[1, 0]
+    print(f'D_0: {d}')
+    til_c_0 += c0 * d
+    norm += abs(d) ** 2
+    for i in range(occ):
+        for a in range(occ, n_spin):
+            d = eigenvectors[0, i] * eigenvectors[1, a] - eigenvectors[0, a] * eigenvectors[1, i]
+            print(f'D^{a}_{i}: {d}')
+            til_c_0 += singles[i, a] * d
+            norm += abs(d) ** 2
+    for i in range(occ):
+        for j in range(occ):
+            for a in range(occ, n_spin):
+                for b in range(occ, n_spin):
+                    d = eigenvectors[i, a] * eigenvectors[j, b] - eigenvectors[j, a] * eigenvectors[i, b]
+                    print(f'D^{a},{b}_{i},{j}: {d}')
+                    til_c_0 += doubles[i, j, a, b] * d
+                    norm += (0.5 * abs(d)) ** 2
+    print(f'Norm: {norm}')
+    print(f'~C_0: {til_c_0}')
+
+    norm_singles = np.zeros((n_spin, n_spin))
+    til_c_singles = np.zeros((n_spin, n_spin))
+    for a in range(occ, n_spin):
+        d1 = eigenvectors[a, 0] * eigenvectors[1, 1] - eigenvectors[a, 1] * eigenvectors[1, 0]
+        d2 = eigenvectors[0, 0] * eigenvectors[a, 1] - eigenvectors[0, 1] * eigenvectors[a, 0]
+        # print(f'0_{a}^D_0: {d1}')
+        # print(f'1_{a}^D_0: {d2}')
+        til_c_singles[0, a] += d1 * c0
+        til_c_singles[1, a] += d2 * c0
+        norm_singles[0, a] += abs(d1) ** 2
+        norm_singles[1, a] += abs(d2) ** 2
+    for j in range(occ):
+        for a in range(occ, n_spin):
+            for b in range(occ, n_spin):
+                d1 = eigenvectors[a, j] * eigenvectors[1, b] - eigenvectors[a, b] * eigenvectors[1, j]
+                d2 = eigenvectors[0, j] * eigenvectors[a, b] - eigenvectors[0, b] * eigenvectors[a, j]
+                # print(f'0_{a}^D^{b}_{j}: {d1}')
+                # print(f'1_{a}^D^{b}_{j}: {d2}')
+                til_c_singles[0, a] += d1 * singles[b, j]
+                til_c_singles[1, a] += d2 * singles[b, j]
+                norm_singles[0, a] += abs(d1) ** 2
+                norm_singles[1, a] += abs(d2) ** 2
+    for j in range(occ):
+        for k in range(occ):
+            for a in range(occ, n_spin):
+                for b in range(occ, n_spin):
+                    for c in range(occ, n_spin):
+                        d1 = eigenvectors[a, b] * eigenvectors[k, c] - eigenvectors[a, c] * eigenvectors[k, b]
+                        d2 = eigenvectors[a, c] * eigenvectors[j, b] - eigenvectors[a, b] * eigenvectors[j, c]
+                        # print(f'0_{a}^D^{b},{c}_{j},{k}: {d1}')
+                        # print(f'1_{a}^D^{b},{c}_{j},{k}: {d2}')
+                        til_c_singles[j, a] += 0.25 * d1 * doubles[j, k, b, c]
+                        til_c_singles[k, a] += 0.25 * d2 * doubles[j, k, b, c]
+                        norm_singles[0, a] += (0.5 * abs(d1)) ** 2
+                        norm_singles[1, a] += (0.5 * abs(d2)) ** 2
+    
+    print(norm_singles[0, 2:])
+    print(til_c_singles[0, 2:])
+    print(norm_singles[1, 2:])
+    print(til_c_singles[1, 2:])
+
+    norm_doubles = np.zeros((n_spin, n_spin, n_spin, n_spin))
+    til_c_doubles = np.zeros((n_spin, n_spin, n_spin, n_spin))
+    for a in range(occ, n_spin):
+        for b in range(occ, n_spin):
+            d = eigenvectors[a, 0] * eigenvectors[b, 1] - eigenvectors[a, 1] * eigenvectors[b, 0]
+            til = d * c0
+            norm = abs(d) ** 2
+            til_c_doubles[0, 1, a, b] += til
+            til_c_doubles[1, 0, a, b] -= til
+            norm_doubles[0, 1, a, b] += norm
+            norm_doubles[1, 0, a, b] += norm
+    for k in range(occ):
+        for a in range(occ, n_spin):
+            for b in range(occ, n_spin):
+                for c in range(occ, n_spin):
+                    d = eigenvectors[a, k] * eigenvectors[b, c] - eigenvectors[a, c] * eigenvectors[b, k]
+                    til = d * singles[k, c]
+                    norm = abs(d) ** 2
+                    til_c_doubles[0, 1, a, b] += til
+                    til_c_doubles[1, 0, a, b] -= til
+                    norm_doubles[0, 1, a, b] += norm
+                    norm_doubles[1, 0, a, b] += norm
+    for k in range(occ):
+        for l in range(occ):
+            for a in range(occ, n_spin):
+                for b in range(occ, n_spin):
+                    for c in range(occ, n_spin):
+                        for d in range(occ, n_spin):
+                            d1 = eigenvectors[a, c] * eigenvectors[b, d] - eigenvectors[a, d] * eigenvectors[b, c]
+                            til = 0.25 * d1 * doubles[k, l, c,  d]
+                            norm = (0.5 * abs(d1)) ** 2
+                            til_c_doubles[k, l, a, b] += til
+                            til_c_doubles[l, k, a, b] -= til
+                            norm_doubles[k, l, a, b] += norm
+                            norm_doubles[l, k, a, b] += norm
+    for a in range(occ, n_spin):
+        print(f'a = {a}')
+        print(norm_doubles[0, 1, a, 2:])
+        print(til_c_doubles[0, 1, a, 2:])
+        print(norm_doubles[1, 0, a, 2:])
+        print(til_c_doubles[1, 0, a, 2:])
 
     # print("Canonical")
     # F_no = eigenvectors.T @ F @ eigenvectors
@@ -518,7 +953,7 @@ if __name__ == "__main__":
     # print(occ_vals)
     # print(virt_vals)
     
-    # result["coefficients"] = block_diag(occ_vecs, virt_vecs)
+    # result["fci_coefficients"] = block_diag(occ_vecs, virt_vecs)
     # result["fci_orb_energies"] = np.concatenate([occ_vals, virt_vals])
     # result["fci_Fock"] = F_no
     # result["fci_F_0"] = eigenvectors.T @ F_0 @ eigenvectors

@@ -69,6 +69,9 @@ cdef inline void _assert(int_t error) except *:
     if error == ck.CKRYLOV_NO_BASIS_UPDATE:
         print(f"Error {error}: CKRYLOV_NO_BASIS_UPDATE")
         return
+    if error == ck.CKRYLOV_MAX_ITERATIONS_REACHED:
+        print(f"Error {error}: CKRYLOV_MAX_ITERATIONS_REACHED")
+        return
     if error != ck.CKRYLOV_OK:
         raise LibkrylovError(error)
 
