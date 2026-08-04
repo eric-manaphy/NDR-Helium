@@ -942,7 +942,7 @@ if __name__ == "__main__":
                 for b in range(occ, n_spin):
                     d = eigenvectors[i, a] * eigenvectors[j, b] - eigenvectors[j, a] * eigenvectors[i, b]
                     print(f'D^{a},{b}_{i},{j}: {d}')
-                    til_c_0 += 0.5 * doubles[i, j, a, b] * d
+                    til_c_0 += 0.25 * doubles[i, j, a, b] * d
                     norm += (0.5 * abs(d)) ** 2
     print(f'Norm: {norm}')
     print(f'~C_0: {til_c_0}')
