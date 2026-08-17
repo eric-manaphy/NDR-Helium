@@ -758,6 +758,9 @@ if __name__ == "__main__":
     h_spin, g_spin = build_spin_orbital_integrals(h_mo, eri_mo)
     n_spin = h_spin.shape[0]
     virt = n_spin - occ
+    n_occ = occ*(occ-1) // 2
+    n_virt = virt*(virt-1) // 2
+    full_dim = n_occ * n_virt + 1
 
     result["h_spin"] = h_spin
     result["g_spin"] = g_spin
@@ -818,8 +821,21 @@ if __name__ == "__main__":
     virts = range(occ, n_spin)
 
     n_singles = occ * virt
-    n_doubles = occ * (occ-1) * virt * (virt-1) // 2
+    n_doubles = full_dim - 1
     full_dim = 1 + n_singles + n_doubles
+
+    full = [[0, 0, 1, 0],
+            [0, 0, 0, 1],
+            [1, 0, 0, 0],
+            [0, 1, 0, 0]]
+    top_left = np.array(full, dtype=np.float64)
+    # half = [[1, 0,  1,  0],
+    #         [0, 1,  0,  1],
+    #         [1, 0, -1,  0],
+    #         [0, 1,  0, -1]]
+    # top_left = (1 / np.sqrt(2)) * np.array(half, dtype=np.float64)
+    bottom_right = np.identity(n_spin - 4, dtype=np.float64)
+    eigenvectors = block_diag(top_left, bottom_right)
 
     # (v1a, v1b) = (2, 3)
     # # (v2a, v2b) = (4, 11)
@@ -887,8 +903,8 @@ if __name__ == "__main__":
 
     norm = 0.0
     c0 = 0.0
-    singles = np.zeros((n_spin, n_spin), dtype=np.float64)
-    doubles = np.zeros((n_spin, n_spin, n_spin, n_spin), dtype=np.float64)
+    singles = np.zeros(n_singles, dtype=np.float64)
+    doubles = np.zeros(n_doubles, dtype=np.float64)
 
     for det, coeff in zip(dets, coeffs):
         det = int(det)
@@ -901,141 +917,225 @@ if __name__ == "__main__":
         elif len(annihilated) == 1:
             i = annihilated[0]
             a = created[0]
-            singles[i, a] = -coeff
+            idx = i * virt + (a - occ)
+            singles[idx] = coeff
         elif len(annihilated) == 2:
             i, j = annihilated
             a, b = created
-            doubles[i, j, a, b] = coeff
-            doubles[j, i, a, b] = -coeff
-            doubles[i, j, b, a] = -coeff
-            doubles[j, i, b, a] = coeff
+            idx = flatten_index(j, i, b, a, occ, virt)
+            doubles[idx] = coeff
 
-    print(f"Norm: {norm}")
+    print(f"Original Norm: {norm}")
 
-    offdiag = -singles * c0
-    for i in range(occ):
-        for j in range(occ):
-            for a in range(occ, n_spin):
-                for b in range(occ, n_spin):
-                    offdiag[i, a] +=  doubles[i, j, a, b] * singles[j, b]
+    # offdiag = -singles * c0
+    # for i in range(occ):
+    #     for j in range(occ):
+    #         for a in range(occ, n_spin):
+    #             for b in range(occ, n_spin):
+    #                 offdiag[i, a] +=  doubles[i, j, a, b] * singles[j, b]
 
-    print("RDM Offdiag:")
-    print(rdm[0:2, 2:])
-    print("Singles:")
-    print(offdiag[0:2, 2:])
+    # print("RDM Offdiag:")
+    # print(rdm[0:2, 2:])
+    # print("Singles:")
+    # print(offdiag[0:2, 2:])
+
+    d_mat = np.empty((full_dim, full_dim), dtype=np.float64)
 
     norm = 0.0
     til_c_0 = 0.0
     d = eigenvectors[0, 0] * eigenvectors[1, 1] - eigenvectors[0, 1] * eigenvectors[1, 0]
-    print(f'D_0: {d}')
+
+    d_mat[0, 0] = d
+
+    # print(f'D_0: {d}')
     til_c_0 += c0 * d
     norm += abs(d) ** 2
+    idx = 0
     for i in range(occ):
         for a in range(occ, n_spin):
             d = eigenvectors[0, i] * eigenvectors[1, a] - eigenvectors[0, a] * eigenvectors[1, i]
-            print(f'D^{a}_{i}: {d}')
-            til_c_0 += singles[i, a] * d
-            norm += abs(d) ** 2
-    for i in range(occ):
-        for j in range(occ):
-            for a in range(occ, n_spin):
-                for b in range(occ, n_spin):
-                    d = eigenvectors[i, a] * eigenvectors[j, b] - eigenvectors[j, a] * eigenvectors[i, b]
-                    print(f'D^{a},{b}_{i},{j}: {d}')
-                    til_c_0 += 0.25 * doubles[i, j, a, b] * d
-                    norm += (0.5 * abs(d)) ** 2
-    print(f'Norm: {norm}')
-    print(f'~C_0: {til_c_0}')
 
-    norm_singles = np.zeros((n_spin, n_spin), dtype=np.float64)
-    til_c_singles = np.zeros((n_spin, n_spin), dtype=np.float64)
+            d_mat[idx + 1, 0] = d
+
+            # print(f'D^{a}_{i}: {d}')
+            til_c_0 += singles[idx] * d
+            norm += abs(d) ** 2
+            idx += 1
+            
+    idx = 0
+    for i in range(1, occ):
+        for j in range(0, i):
+            for a in range(occ + 1, n_spin):
+                for b in range(occ, a):
+                    d = 2 * (eigenvectors[i, a] * eigenvectors[j, b] - eigenvectors[j, a] * eigenvectors[i, b])
+
+                    d_mat[idx + n_singles + 1, 0] = 0.5 * d
+
+                    # print(f'D^{a},{b}_{i},{j}: {d}')
+                    til_c_0 += 0.5 * doubles[idx] * d
+                    norm += (0.5 * abs(d)) ** 2
+                    idx += 1
+    print(f'Ref Det Norm: {norm}')
+    print(f'~C_0: {til_c_0}')
+    
+    norm_singles = np.zeros(n_singles, dtype=np.float64)
+    til_c_singles = np.zeros(n_singles, dtype=np.float64)
     for a in range(occ, n_spin):
         d1 = eigenvectors[a, 0] * eigenvectors[1, 1] - eigenvectors[a, 1] * eigenvectors[1, 0]
         d2 = eigenvectors[0, 0] * eigenvectors[a, 1] - eigenvectors[0, 1] * eigenvectors[a, 0]
-        til_c_singles[0, a] += d1 * c0
-        til_c_singles[1, a] += d2 * c0
-        norm_singles[0, a] += abs(d1) ** 2
-        norm_singles[1, a] += abs(d2) ** 2
-    for j in range(occ):
-        for a in range(occ, n_spin):
+        a_idx = a - occ
+
+        d_mat[0, a_idx + 1] = d1
+        d_mat[0, virt + a_idx + 1] = d2
+
+        til_c_singles[a_idx] += d1 * c0
+        til_c_singles[virt + a_idx] += d2 * c0
+        norm_singles[a_idx] += abs(d1) ** 2
+        norm_singles[virt + a_idx] += abs(d2) ** 2
+
+    for a in range(occ, n_spin):
+        idx = 0
+        a_idx = a - occ
+        for j in range(occ):
             for b in range(occ, n_spin):
+                c_val = singles[idx]
                 d1 = eigenvectors[a, j] * eigenvectors[1, b] - eigenvectors[a, b] * eigenvectors[1, j]
                 d2 = eigenvectors[0, j] * eigenvectors[a, b] - eigenvectors[0, b] * eigenvectors[a, j]
-                til_c_singles[0, a] += d1 * singles[b, j]
-                til_c_singles[1, a] += d2 * singles[b, j]
-                norm_singles[0, a] += abs(d1) ** 2
-                norm_singles[1, a] += abs(d2) ** 2
-    for j in range(occ):
-        for k in range(occ):
-            for a in range(occ, n_spin):
-                for b in range(occ, n_spin):
-                    for c in range(occ, n_spin):
-                        d1 = eigenvectors[a, b] * eigenvectors[k, c] - eigenvectors[a, c] * eigenvectors[k, b]
-                        d2 = eigenvectors[a, c] * eigenvectors[j, b] - eigenvectors[a, b] * eigenvectors[j, c]
-                        til_c_singles[j, a] += 0.25 * d1 * doubles[j, k, b, c]
-                        til_c_singles[k, a] += 0.25 * d2 * doubles[j, k, b, c]
-                        norm_singles[0, a] += (0.5 * abs(d1)) ** 2
-                        norm_singles[1, a] += (0.5 * abs(d2)) ** 2
-    
-    print(norm_singles[0, 2:])
-    print(til_c_singles[0, 2:])
-    print(norm_singles[1, 2:])
-    print(til_c_singles[1, 2:])
 
-    norm_doubles = np.zeros((n_spin, n_spin, n_spin, n_spin), dtype=np.float64)
-    til_c_doubles = np.zeros((n_spin, n_spin, n_spin, n_spin), dtype=np.float64)
-    for a in range(occ, n_spin):
-        for b in range(occ, n_spin):
+                d_mat[idx + 1, a_idx + 1] = d1
+                d_mat[idx + 1, virt + a_idx + 1] = d2
+
+                til_c_singles[a_idx] += d1 * c_val
+                til_c_singles[virt + a_idx] += d2 * c_val
+                norm_singles[a_idx] += abs(d1) ** 2
+                norm_singles[virt + a_idx] += abs(d2) ** 2
+                idx += 1
+    for i in range(1, occ):
+        for k in range(0, i):
+            for a in range(occ, n_spin):
+                for b in range(occ + 1, n_spin):
+                    for c in range(occ, b):
+                        idx = flatten_index(i, k, b, c, occ, virt)
+                        c_val = doubles[idx]
+                        d1 = 2 * (eigenvectors[a, b] * eigenvectors[k, c] - eigenvectors[a, c] * eigenvectors[k, b])
+                        sub_idx = i * virt + (a - occ)
+
+                        d_mat[idx + 1 + n_singles, sub_idx + 1] = 0.5 * d1
+
+                        til_c_singles[sub_idx] += 0.5 * d1 * c_val
+                        norm_singles[sub_idx] += (0.5 * abs(d1)) ** 2
+                        idx += 1
+    for j in range(1, occ):
+        for i in range(0, j):
+            for a in range(occ, n_spin):
+                for b in range(occ + 1, n_spin):
+                    for c in range(occ, b):
+                        idx = flatten_index(j, i, b, c, occ, virt)
+                        c_val = doubles[idx]
+                        d2 = 2 * (eigenvectors[a, c] * eigenvectors[j, b] - eigenvectors[a, b] * eigenvectors[j, c])
+                        sub_idx = i * virt + (a - occ)
+
+                        d_mat[idx + 1 + n_singles, sub_idx + 1] = 0.5 * d2
+
+                        til_c_singles[sub_idx] += 0.5 * d2 * c_val
+                        norm_singles[sub_idx] += (0.5 * abs(d2)) ** 2
+                        idx += 1
+    print("Singles")
+    print(til_c_singles)
+    print("Norms")
+    print(norm_singles)
+
+    norm_doubles = np.zeros(n_doubles, dtype=np.float64)
+    til_c_doubles = np.zeros(n_doubles, dtype=np.float64)
+    idx = 0
+    for a in range(occ + 1, n_spin):
+        for b in range(occ, a):
             d = eigenvectors[a, 0] * eigenvectors[b, 1] - eigenvectors[a, 1] * eigenvectors[b, 0]
+
+            d_mat[0, idx + n_singles + 1] = d
+
             til = d * c0
             norm = abs(d) ** 2
-            til_c_doubles[0, 1, a, b] += til
-            til_c_doubles[1, 0, a, b] -= til
-            norm_doubles[0, 1, a, b] += norm
-            norm_doubles[1, 0, a, b] += norm
+            til_c_doubles[idx] -= til
+            # til_c_doubles[0, 1, a, b] += til
+            norm_doubles[idx] += norm
+            # norm_doubles[1, 0, a, b] += norm
+            idx += 1
+    cur_val = 0
     for k in range(occ):
-        for a in range(occ, n_spin):
-            for b in range(occ, n_spin):
+        idx = 0
+        for a in range(occ + 1, n_spin):
+            for b in range(occ, a):
+                sub_idx = cur_val
                 for c in range(occ, n_spin):
                     d = eigenvectors[a, k] * eigenvectors[b, c] - eigenvectors[a, c] * eigenvectors[b, k]
-                    til = d * singles[k, c]
+
+                    d_mat[sub_idx + 1, idx + n_singles + 1] = d
+
+                    til = d * singles[sub_idx]
                     norm = abs(d) ** 2
-                    til_c_doubles[0, 1, a, b] += til
-                    til_c_doubles[1, 0, a, b] -= til
-                    norm_doubles[0, 1, a, b] += norm
-                    norm_doubles[1, 0, a, b] += norm
-    for k in range(occ):
-        for l in range(occ):
-            for a in range(occ, n_spin):
-                for b in range(occ, n_spin):
-                    for c in range(occ, n_spin):
-                        for d in range(occ, n_spin):
-                            d1 = eigenvectors[a, c] * eigenvectors[b, d] - eigenvectors[a, d] * eigenvectors[b, c]
-                            til = 0.5 * d1 * doubles[k, l, c,  d]
+                    til_c_doubles[idx] -= til
+                    # til_c_doubles[0, 1, a, b] += til
+                    norm_doubles[idx] += norm
+                    # norm_doubles[1, 0, a, b] += norm
+                    sub_idx += 1
+                idx += 1
+        cur_val = sub_idx
+    idx = 0
+    cur_val = 0
+    for k in range(1, occ):
+        for l in range(0, k):
+            for c in range(occ + 1, n_spin):
+                for d in range(occ, c):
+                    sub_idx = cur_val
+                    for a in range(occ + 1, n_spin):
+                        for b in range(occ, a):
+                            d1 = 2 * (eigenvectors[a, c] * eigenvectors[b, d] - eigenvectors[a, d] * eigenvectors[b, c])
+
+                            d_mat[idx + n_singles + 1, sub_idx + n_singles + 1] = 0.5 * d1
+
+                            til = 0.5 * d1 * doubles[idx]
                             norm = (0.5 * abs(d1)) ** 2
-                            til_c_doubles[k, l, a, b] += til
-                            til_c_doubles[l, k, a, b] -= til
-                            norm_doubles[k, l, a, b] += norm
-                            norm_doubles[l, k, a, b] += norm
-    for a in range(occ, n_spin):
-        print(f'a = {a}')
-        print(norm_doubles[0, 1, a, 2:])
-        print(til_c_doubles[0, 1, a, 2:])
-        print(norm_doubles[1, 0, a, 2:])
-        print(til_c_doubles[1, 0, a, 2:])
+                            til_c_doubles[sub_idx] -= til
+                            # til_c_doubles[k, l, a, b] += til
+                            norm_doubles[sub_idx] += norm
+                            # norm_doubles[k, l, a, b] += norm
+                            sub_idx += 1
+                    idx += 1
+            cur_val = sub_idx
+    print("Doubles, Norm")
+    for i in range(n_doubles):
+        print(f"{til_c_doubles[i]}, {norm_doubles[i]}")
+        
 
     norm = 0.0
     til_c_0 = 0.0
     norm += abs(til_c_0) ** 2
+    idx = 0
     for i in range(occ):
         for a in range(occ, n_spin):
-            norm += abs(til_c_singles[i, a]) ** 2
-    for i in range(occ):
-        for j in range(occ):
-            for a in range(occ, n_spin):
-                for b in range(occ, n_spin):
-                    norm += (0.5 * abs(til_c_doubles[i, j, a, b])) ** 2
+            norm += abs(til_c_singles[idx]) ** 2
+            idx += 1
+    idx = 0
+    for i in range(1, occ):
+        for j in range(0, i):
+            for a in range(occ + 1, n_spin):
+                for b in range(occ, a):
+                    norm += (0.5 * abs(til_c_doubles[idx])) ** 2
+                    idx += 1
     print(f'Norm: {norm}')
+
+
+    wrong = []
+    for i in range(full_dim):
+        for j in range(0, i + 1):
+            first = "R" if i == 0 else "S" if i - 1 < n_singles else "D"
+            second = "R" if j == 0 else "S" if j - 1 < n_singles else "D"
+            overlap = np.dot(d_mat[:, i], d_mat[:, j])
+            print(f"{i} ({first}), {j} ({second}): {overlap}")
+            if (i == j and not np.isclose(overlap, 1)) or (i != j and not np.isclose(overlap, 0)):
+                wrong.append((i, j))
+    print(wrong)
 
     # print("Canonical")
     # F_no = eigenvectors.T @ F @ eigenvectors
