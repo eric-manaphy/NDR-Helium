@@ -8,7 +8,7 @@ from src.solver.hf_scf import scf, group_basis_by_lm
 from src.solver.ci_full import FullCISolver
 from src.solver.orbital_opt import optimize_hf_orbitals
 from src.solver.NDR import calculate_1rdm_full, get_natural_orbitals, calculate_2rdm
-from src.utils import ao_to_mo_transform, build_spin_orbital_integrals, flatten_index, calculate_1rdm, calculate_JK, build_EKT_Fock
+from src.utils import ao_to_mo_transform, build_spin_orbital_integrals, flatten_index, calculate_1rdm, calculate_JK, build_EKT_Fock, calculate_1rdm_full_from_external
 from src.ndr import libkrylov as lk
 
 class NumpyEncoder(json.JSONEncoder):
@@ -781,7 +781,7 @@ if __name__ == "__main__":
     c0 = eigenvectors[:, -1]
     c1 = eigenvectors[:, -2]
 
-    eigenvectors = np.fliplr(eigenvectors)
+    eigenvectors = (np.fliplr(eigenvectors))
     result["fci_coefficients"] = eigenvectors
 
     rdm_0 = np.outer(c0, c0) + np.outer(c1, c1)
@@ -824,18 +824,41 @@ if __name__ == "__main__":
     n_doubles = full_dim - 1
     full_dim = 1 + n_singles + n_doubles
 
-    full = [[0, 0, 1, 0],
-            [0, 0, 0, 1],
-            [1, 0, 0, 0],
-            [0, 1, 0, 0]]
-    top_left = np.array(full, dtype=np.float64)
+    # full = [[0, 0, 1, 0],
+    #         [0, 0, 0, 1],
+    #         [1, 0, 0, 0],
+    #         [0, 1, 0, 0]]
+    # top_left = np.array(full, dtype=np.float64)
     # half = [[1, 0,  1,  0],
     #         [0, 1,  0,  1],
     #         [1, 0, -1,  0],
     #         [0, 1,  0, -1]]
     # top_left = (1 / np.sqrt(2)) * np.array(half, dtype=np.float64)
-    bottom_right = np.identity(n_spin - 4, dtype=np.float64)
-    eigenvectors = block_diag(top_left, bottom_right)
+    # bottom_right = np.identity(n_spin - 4, dtype=np.float64)
+    # eigenvectors = block_diag(top_left, bottom_right)
+
+    # eigenvectors = eigenvectors.T @ rdm @ eigenvectors
+    # iden = np.identity(n_spin, dtype=np.float64)
+    # indices = np.arange(iden.shape[1])
+
+    # for i in range(0, n_spin - 1, 2):
+    #     indices[[i, i + 1]] = indices[[i + 1, i]]
+    #     perm = iden[:, indices]
+    #     print(np.allclose(eigenvectors, perm @ eigenvectors @ perm.T))
+    #     indices[[i, i + 1]] = indices[[i + 1, i]]
+
+    # for i in range(n_spin // 2 - 1):
+    #     for j in range(n_spin // 2 - 1):
+    #         check = [
+    #             np.isclose(eigenvectors[2 * i, 2 * j], eigenvectors[2 * i + 1, 2 * j + 1]),
+    #             np.isclose(eigenvectors[2 * j, 2 * i], eigenvectors[2 * j + 1, 2 * i + 1]),
+    #             np.isclose(eigenvectors[2 * i, 2 * j + 1], 0),
+    #             np.isclose(eigenvectors[2 * i + 1, 2 * j], 0),
+    #             np.isclose(eigenvectors[2 * j, 2 * i + 1], 0),
+    #             np.isclose(eigenvectors[2 * j + 1, 2 * i], 0)
+    #         ]
+    #         if not all(check):
+    #             print(i, j)
 
     # (v1a, v1b) = (2, 3)
     # # (v2a, v2b) = (4, 11)
@@ -923,24 +946,61 @@ if __name__ == "__main__":
             i, j = annihilated
             a, b = created
             idx = flatten_index(j, i, b, a, occ, virt)
-            doubles[idx] = coeff
+            doubles[idx] = coeff * 1
 
+
+    # ci_vec = np.concatenate((np.array([c0], dtype=np.float64), singles, doubles))
     print(f"Original Norm: {norm}")
 
+    # Singles / RDM Offdiag checker for naive storage of CI
     # offdiag = -singles * c0
-    # for i in range(occ):
-    #     for j in range(occ):
-    #         for a in range(occ, n_spin):
-    #             for b in range(occ, n_spin):
-    #                 offdiag[i, a] +=  doubles[i, j, a, b] * singles[j, b]
+    # idx = 0
+    # for i in range(1, occ):
+    #     for j in range(0, i):
+    #         for a in range(occ+1, n_spin):
+    #             for b in range(occ, a):
+    #                 sub_idx_1 = i * virt + (a - occ)
+    #                 sub_idx_2 = j * virt + (b - occ)
+    #                 offdiag[sub_idx_1] +=  doubles[idx] * singles[sub_idx_2]
+    #                 idx += 1
 
-    # print("RDM Offdiag:")
-    # print(rdm[0:2, 2:])
-    # print("Singles:")
-    # print(offdiag[0:2, 2:])
+    # Singles / RDM Offdiag checker for 1D storage
+    offdiag = -singles * c0
+    for i in range(occ):
+        for a in range(occ, n_spin):
+            for j in range(0, i):
+                for b in range(occ, a):
+                    sub_idx_1 = i * virt + (a - occ)
+                    sub_idx_2 = j * virt + (b - occ)
+                    idx = flatten_index(i, j, a, b, occ, virt)
+                    offdiag[sub_idx_1] +=  doubles[idx] * singles[sub_idx_2]
+                for b in range(a + 1, n_spin):
+                    sub_idx_1 = i * virt + (a - occ)
+                    sub_idx_2 = j * virt + (b - occ)
+                    idx = flatten_index(i, j, a, b, occ, virt)
+                    offdiag[sub_idx_1] -=  doubles[idx] * singles[sub_idx_2]
+            for j in range(i + 1, occ):
+                for b in range(occ, a):
+                    sub_idx_1 = i * virt + (a - occ)
+                    sub_idx_2 = j * virt + (b - occ)
+                    idx = flatten_index(i, j, a, b, occ, virt)
+                    offdiag[sub_idx_1] -=  doubles[idx] * singles[sub_idx_2]
+                for b in range(a + 1, n_spin):
+                    sub_idx_1 = i * virt + (a - occ)
+                    sub_idx_2 = j * virt + (b - occ)
+                    idx = flatten_index(i, j, a, b, occ, virt)
+                    offdiag[sub_idx_1] +=  doubles[idx] * singles[sub_idx_2]
 
+    print("RDM Offdiag:")
+    print(rdm[0:2, 2:])
+    print("Singles:")
+    print(offdiag)
+
+    # Matrix to test orthonormality of transformation coefficeints
     d_mat = np.empty((full_dim, full_dim), dtype=np.float64)
 
+    # ~C0
+    # Ref contribution
     norm = 0.0
     til_c_0 = 0.0
     d = eigenvectors[0, 0] * eigenvectors[1, 1] - eigenvectors[0, 1] * eigenvectors[1, 0]
@@ -950,6 +1010,8 @@ if __name__ == "__main__":
     # print(f'D_0: {d}')
     til_c_0 += c0 * d
     norm += abs(d) ** 2
+
+    # Singles contribution
     idx = 0
     for i in range(occ):
         for a in range(occ, n_spin):
@@ -961,7 +1023,8 @@ if __name__ == "__main__":
             til_c_0 += singles[idx] * d
             norm += abs(d) ** 2
             idx += 1
-            
+
+    #Doubles contribution
     idx = 0
     for i in range(1, occ):
         for j in range(0, i):
@@ -977,9 +1040,12 @@ if __name__ == "__main__":
                     idx += 1
     print(f'Ref Det Norm: {norm}')
     print(f'~C_0: {til_c_0}')
-    
+
+    # ~C singles
     norm_singles = np.zeros(n_singles, dtype=np.float64)
     til_c_singles = np.zeros(n_singles, dtype=np.float64)
+
+    # Ref contribution
     for a in range(occ, n_spin):
         d1 = eigenvectors[a, 0] * eigenvectors[1, 1] - eigenvectors[a, 1] * eigenvectors[1, 0]
         d2 = eigenvectors[0, 0] * eigenvectors[a, 1] - eigenvectors[0, 1] * eigenvectors[a, 0]
@@ -993,6 +1059,7 @@ if __name__ == "__main__":
         norm_singles[a_idx] += abs(d1) ** 2
         norm_singles[virt + a_idx] += abs(d2) ** 2
 
+    # Singles contribution
     for a in range(occ, n_spin):
         idx = 0
         a_idx = a - occ
@@ -1010,6 +1077,8 @@ if __name__ == "__main__":
                 norm_singles[a_idx] += abs(d1) ** 2
                 norm_singles[virt + a_idx] += abs(d2) ** 2
                 idx += 1
+
+    # First term of doubles contribution
     for i in range(1, occ):
         for k in range(0, i):
             for a in range(occ, n_spin):
@@ -1025,6 +1094,7 @@ if __name__ == "__main__":
                         til_c_singles[sub_idx] += 0.5 * d1 * c_val
                         norm_singles[sub_idx] += (0.5 * abs(d1)) ** 2
                         idx += 1
+    # Second term
     for j in range(1, occ):
         for i in range(0, j):
             for a in range(occ, n_spin):
@@ -1045,22 +1115,29 @@ if __name__ == "__main__":
     print("Norms")
     print(norm_singles)
 
+    # ~C doubles
+    # Seems like a global factor of 2 should be applied
+    # Since the loops over ijab are also constrained
     norm_doubles = np.zeros(n_doubles, dtype=np.float64)
     til_c_doubles = np.zeros(n_doubles, dtype=np.float64)
+
+    # Ref contribution
     idx = 0
     for a in range(occ + 1, n_spin):
         for b in range(occ, a):
-            d = eigenvectors[a, 0] * eigenvectors[b, 1] - eigenvectors[a, 1] * eigenvectors[b, 0]
+            d = -(eigenvectors[a, 0] * eigenvectors[b, 1] - eigenvectors[a, 1] * eigenvectors[b, 0])
 
             d_mat[0, idx + n_singles + 1] = d
 
-            til = d * c0
+            til = d * c0 * 2
             norm = abs(d) ** 2
-            til_c_doubles[idx] -= til
+            til_c_doubles[idx] += til
             # til_c_doubles[0, 1, a, b] += til
             norm_doubles[idx] += norm
             # norm_doubles[1, 0, a, b] += norm
             idx += 1
+
+    # Singles contribution
     cur_val = 0
     for k in range(occ):
         idx = 0
@@ -1068,19 +1145,21 @@ if __name__ == "__main__":
             for b in range(occ, a):
                 sub_idx = cur_val
                 for c in range(occ, n_spin):
-                    d = eigenvectors[a, k] * eigenvectors[b, c] - eigenvectors[a, c] * eigenvectors[b, k]
+                    d = -(eigenvectors[a, k] * eigenvectors[b, c] - eigenvectors[a, c] * eigenvectors[b, k])
 
                     d_mat[sub_idx + 1, idx + n_singles + 1] = d
 
-                    til = d * singles[sub_idx]
+                    til = d * singles[sub_idx] * 2
                     norm = abs(d) ** 2
-                    til_c_doubles[idx] -= til
+                    til_c_doubles[idx] += til
                     # til_c_doubles[0, 1, a, b] += til
                     norm_doubles[idx] += norm
                     # norm_doubles[1, 0, a, b] += norm
                     sub_idx += 1
                 idx += 1
         cur_val = sub_idx
+
+    # Doubles contribution
     idx = 0
     cur_val = 0
     for k in range(1, occ):
@@ -1094,9 +1173,9 @@ if __name__ == "__main__":
 
                             d_mat[idx + n_singles + 1, sub_idx + n_singles + 1] = 0.5 * d1
 
-                            til = 0.5 * d1 * doubles[idx]
+                            til = 1 * d1 * doubles[idx]
                             norm = (0.5 * abs(d1)) ** 2
-                            til_c_doubles[sub_idx] -= til
+                            til_c_doubles[sub_idx] += til
                             # til_c_doubles[k, l, a, b] += til
                             norm_doubles[sub_idx] += norm
                             # norm_doubles[k, l, a, b] += norm
@@ -1106,36 +1185,40 @@ if __name__ == "__main__":
     print("Doubles, Norm")
     for i in range(n_doubles):
         print(f"{til_c_doubles[i]}, {norm_doubles[i]}")
-        
 
+    # Norm of transformed wfn
     norm = 0.0
-    til_c_0 = 0.0
     norm += abs(til_c_0) ** 2
     idx = 0
-    for i in range(occ):
-        for a in range(occ, n_spin):
-            norm += abs(til_c_singles[idx]) ** 2
-            idx += 1
-    idx = 0
-    for i in range(1, occ):
-        for j in range(0, i):
-            for a in range(occ + 1, n_spin):
-                for b in range(occ, a):
-                    norm += (0.5 * abs(til_c_doubles[idx])) ** 2
-                    idx += 1
+    for i in range(n_singles):
+        norm += abs(til_c_singles[idx]) ** 2
+        idx += 1
+    for i in range(n_doubles):
+        norm += (0.5 * abs(til_c_doubles[i])) ** 2
     print(f'Norm: {norm}')
 
-
+    # Orthonormality checker
     wrong = []
     for i in range(full_dim):
         for j in range(0, i + 1):
-            first = "R" if i == 0 else "S" if i - 1 < n_singles else "D"
-            second = "R" if j == 0 else "S" if j - 1 < n_singles else "D"
+            # first = "R" if i == 0 else "S" if i - 1 < n_singles else "D"
+            # second = "R" if j == 0 else "S" if j - 1 < n_singles else "D"
             overlap = np.dot(d_mat[:, i], d_mat[:, j])
-            print(f"{i} ({first}), {j} ({second}): {overlap}")
+            # print(f"{i} ({first}), {j} ({second}): {overlap}")
             if (i == j and not np.isclose(overlap, 1)) or (i != j and not np.isclose(overlap, 0)):
                 wrong.append((i, j))
     print(wrong)
+
+    s = {idx for tup in wrong for idx in tup}
+    for idx in s:
+        idxs = np.argwhere(d_mat[:, idx]).flatten()
+        vals = d_mat[idxs, idx].flatten()
+        print(f'{idx}: {np.stack((idxs, vals))}')
+
+    ci_til_vec = np.concatenate((np.array([til_c_0], dtype=np.float64), til_c_singles, til_c_doubles))
+    til_rdm = calculate_1rdm_full_from_external(ci_til_vec, n_spin, N)
+
+    np.savetxt('transformed_1rdm.csv', til_rdm, "%.8f", ',')
 
     # print("Canonical")
     # F_no = eigenvectors.T @ F @ eigenvectors
