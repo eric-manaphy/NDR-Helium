@@ -1,4 +1,5 @@
 import numpy as np
+from itertools import combinations
 
 def build_param_maps(basis):
     # Local import to avoid circular dependency
@@ -163,7 +164,7 @@ def flatten_index(i, j, a, b, occ, virt):
         i, j = j, i
     if b > a:
         a, b = b, a
-    return (i * (i - 1) // 2 + j) * virt * (virt - 1) // 2 + (a - occ)*(a - occ - 1) // 2 + b - occ + 1
+    return (i * (i - 1) // 2 + j) * virt * (virt - 1) // 2 + (a - occ)*(a - occ - 1) // 2 + b - occ
 
 def calculate_1rdm(ci_vec, occ, virt):
     n_spin = occ + virt
@@ -299,4 +300,45 @@ def build_EKT_Fock(h, one_rdm, g_spin, two_rdm):
             two_e[p,q] += two_sum
     F = one_e + two_e
     return F, one_e, two_e
+
+def _apply_one_body(det, p, q):
+    if not (det & (1 << q)): return None, 0
+    phase1 = (-1) ** (det & ((1 << q) - 1)).bit_count()
+    det_tmp = det ^ (1 << q)
     
+    if det_tmp & (1 << p): return None, 0
+    phase2 = (-1) ** (det_tmp & ((1 << p) - 1)).bit_count()
+    return det_tmp | (1 << p), phase1 * phase2
+
+def calculate_1rdm_full_from_external(ci_vector, n_spin, n_elec):
+
+    dets = []
+    for occ in combinations(range(n_spin), n_elec):
+        det = 0
+        for p in occ:
+            det |= (1 << p)
+        dets.append(det)
+    det_map = {det: i for i, det in enumerate(dets)}
+
+    rdm = np.zeros((n_spin, n_spin))
+
+    # Loop over determinants in the basis
+    for j, det_j in enumerate(dets):
+        c_j = ci_vector[j]
+        if abs(c_j) < 1e-12: 
+            continue
+
+        # for each determinant, apply a_p^dagger a_q for all spin-orbitals pairs p, q
+        for q in range(n_spin):
+            if not (det_j & (1 << q)):
+                continue
+
+            for p in range(n_spin):
+
+                det_i, phase = _apply_one_body(det_j, p, q)
+                if det_i is not None and det_i in det_map:
+                    i = det_map[det_i]
+                    c_i = ci_vector[i]
+                    rdm[p, q] += c_i * c_j * phase
+
+    return rdm
