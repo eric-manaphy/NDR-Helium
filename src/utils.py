@@ -228,22 +228,22 @@ def calculate_1rdm(ci_vec, occ, virt):
                 for b in range(occ, a):
                     val = 0
 
-                    a_idx = flatten_index(i, j, a, occ, occ, virt)
-                    b_idx = flatten_index(i, j, b, occ, occ, virt)
+                    a_idx = flatten_index(i, j, a, occ, occ, virt) + 1
+                    b_idx = flatten_index(i, j, b, occ, occ, virt) + 1
                     for c in range(occ, b):
                         val += ci_vec[a_idx] * ci_vec[b_idx]
                         a_idx += 1
                         b_idx += 1
                     
                     a_idx += 1
-                    b_idx = flatten_index(i, j, b, b+1, occ, virt)
+                    b_idx = flatten_index(i, j, b, b+1, occ, virt) + 1
                     for c in range(b+1, a):
                         val -= ci_vec[a_idx] * ci_vec[b_idx]
                         a_idx += 1
                         b_idx += c - occ
                     
-                    a_idx = flatten_index(i, j, a, a+1, occ, virt)
-                    b_idx = flatten_index(i, j, b, a+1, occ, virt)
+                    a_idx = flatten_index(i, j, a, a+1, occ, virt) + 1
+                    b_idx = flatten_index(i, j, b, a+1, occ, virt) + 1
                     for c in range(a+1, virt):
                         val += ci_vec[a_idx] * ci_vec[b_idx]
                         a_idx += c - occ
@@ -253,6 +253,127 @@ def calculate_1rdm(ci_vec, occ, virt):
 
     # Virt-virt diagonal
     v_idx = 1
+    for i in range(1, occ):
+        for j in range(0, i):
+            for a in range(occ + 1, n_spin):
+                for c in range(occ, a):
+                    val = abs(ci_vec[v_idx]) ** 2
+                    one_rdm[a, a] += val
+                    one_rdm[c, c] += val
+                    v_idx += 1
+    
+    return one_rdm
+
+def calculate_1rdm_from_full(ci_vec, occ, virt):
+    n_spin = occ + virt
+    n_singles = occ * virt
+    one_rdm = np.zeros((n_spin, n_spin), dtype=np.float64)
+    np.fill_diagonal(one_rdm[:occ, :occ], 1)
+
+    # Singles Portion
+
+    # Occ-occ off-diagonal
+    for i in range(1, occ):
+        for j in range(0, i):
+            val = 0
+            for a in range(occ, n_spin):
+                a_idx = a - occ
+                val += ci_vec[i * virt + a_idx + 1] * ci_vec[j * virt + a_idx + 1]
+            one_rdm[i, j] -= val
+            one_rdm[j, i] -= val
+
+    # Occ-occ diagonal
+    v_idx = 1
+    for i in range(occ):
+        for a in range(occ, n_spin):
+            val += abs(ci_vec[v_idx]) ** 2
+            v_idx += 1
+        one_rdm[i, i] -= val
+
+    # Virt-Virt off-diagonal
+    for i in range(occ):
+        i_idx = i * virt
+        for a in range(occ + 1, n_spin):
+            for b in range(occ, n_spin):
+                a_idx = a - occ
+                b_idx = b - occ
+                val = ci_vec[i_idx + a_idx + 1] * ci_vec[i_idx + b_idx + 1]
+                one_rdm[a, b] += val
+                one_rdm[b, a] += val
+
+    # Virt-Virt diagonal
+    v_idx = 1
+    for i in range(occ):
+        for a in range(occ, n_spin):
+                one_rdm[a, a] += abs(ci_vec[v_idx]) ** 2
+                v_idx += 1
+
+    # Off-diagonal
+    c_0 = ci_vec[0]
+    v_idx = 1
+    for i in range(occ):
+        for a in range(occ, n_spin):
+            val = ci_vec[v_idx] * c_0
+            one_rdm[i, a] = val
+            one_rdm[a, i] = val
+            v_idx += 1
+    v_idx = 1 + n_singles
+    for i in range(1, occ):
+        for j in range(0, i):
+            for a in range(occ+1, n_spin):
+                for b in range(occ, a):
+                    sub_idx_2 = j * virt + (b - occ) + 1
+                    val = ci_vec[v_idx] * ci_vec[sub_idx_2]
+                    one_rdm[i, a] -= val
+                    one_rdm[a, i] -= val
+                    v_idx += 1
+
+    # Doubles Portion
+
+    # Occ-occ diagonal
+    v_idx = 1 + n_singles
+    for i in range(1, occ):
+        for k in range(0, i):
+            val = 0
+            for a in range(occ + 1, n_spin):
+                for b in range(occ, a):
+                    val += abs(ci_vec[v_idx]) ** 2
+                    v_idx += 1
+            one_rdm[i, i] -= val
+            one_rdm[k, k] -= val
+
+    # Virt-virt off-diagonal
+    for i in range(1, occ):
+        for j in range(0, i):
+            for a in range(occ + 1, n_spin):
+                for b in range(occ, a):
+                    val = 0
+
+                    a_idx = flatten_index(i, j, a, occ, occ, virt) + 1 + n_singles
+                    b_idx = flatten_index(i, j, b, occ, occ, virt) + 1 + n_singles
+                    for c in range(occ, b):
+                        val += ci_vec[a_idx] * ci_vec[b_idx]
+                        a_idx += 1
+                        b_idx += 1
+                    
+                    a_idx += 1
+                    b_idx = flatten_index(i, j, b, b+1, occ, virt) + 1 + n_singles
+                    for c in range(b+1, a):
+                        val -= ci_vec[a_idx] * ci_vec[b_idx]
+                        a_idx += 1
+                        b_idx += c - occ
+                    
+                    a_idx = flatten_index(i, j, a, a+1, occ, virt) + 1 + n_singles
+                    b_idx = flatten_index(i, j, b, a+1, occ, virt) + 1 + n_singles
+                    for c in range(a+1, virt):
+                        val += ci_vec[a_idx] * ci_vec[b_idx]
+                        a_idx += c - occ
+                        b_idx += c - occ
+                    one_rdm[a, b] += val
+                    one_rdm[b, a] += val
+
+    # Virt-virt diagonal
+    v_idx = 1 + n_singles
     for i in range(1, occ):
         for j in range(0, i):
             for a in range(occ + 1, n_spin):

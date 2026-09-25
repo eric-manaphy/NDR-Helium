@@ -8,7 +8,7 @@ from src.solver.hf_scf import scf, group_basis_by_lm
 from src.solver.ci_full import FullCISolver
 from src.solver.orbital_opt import optimize_hf_orbitals
 from src.solver.NDR import calculate_1rdm_full, get_natural_orbitals, calculate_2rdm
-from src.utils import ao_to_mo_transform, build_spin_orbital_integrals, flatten_index, calculate_1rdm, calculate_JK, build_EKT_Fock, calculate_1rdm_full_from_external
+from src.utils import ao_to_mo_transform, build_spin_orbital_integrals, flatten_index, calculate_1rdm, calculate_JK, build_EKT_Fock, calculate_1rdm_from_full
 from src.ndr import libkrylov as lk
 
 class NumpyEncoder(json.JSONEncoder):
@@ -1216,9 +1216,15 @@ if __name__ == "__main__":
         print(f'{idx}: {np.stack((idxs, vals))}')
 
     ci_til_vec = np.concatenate((np.array([til_c_0], dtype=np.float64), til_c_singles, til_c_doubles))
-    til_rdm = calculate_1rdm_full_from_external(ci_til_vec, n_spin, N)
+    til_rdm = calculate_1rdm_from_full(ci_til_vec, occ, virt)
 
     np.savetxt('transformed_1rdm.csv', til_rdm, "%.8f", ',')
+
+    print("Original eigenvalues:")
+    print(eigenvalues)
+    eigenvalues, eigenvectors = eigh(til_rdm)
+    print("Transformed eigenvalues:")
+    print(eigenvalues)
 
     # print("Canonical")
     # F_no = eigenvectors.T @ F @ eigenvectors
