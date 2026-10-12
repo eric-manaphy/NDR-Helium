@@ -289,12 +289,13 @@ def calculate_1rdm_from_full(ci_vec, occ, virt):
             val += abs(ci_vec[v_idx]) ** 2
             v_idx += 1
         one_rdm[i, i] -= val
+        val = 0
 
     # Virt-Virt off-diagonal
     for i in range(occ):
         i_idx = i * virt
         for a in range(occ + 1, n_spin):
-            for b in range(occ, n_spin):
+            for b in range(occ, a):
                 a_idx = a - occ
                 b_idx = b - occ
                 val = ci_vec[i_idx + a_idx + 1] * ci_vec[i_idx + b_idx + 1]
@@ -309,24 +310,36 @@ def calculate_1rdm_from_full(ci_vec, occ, virt):
                 v_idx += 1
 
     # Off-diagonal
-    c_0 = ci_vec[0]
-    v_idx = 1
+    offdiag = -ci_vec[1:n_singles + 1] * ci_vec[0]
     for i in range(occ):
         for a in range(occ, n_spin):
-            val = ci_vec[v_idx] * c_0
-            one_rdm[i, a] = val
-            one_rdm[a, i] = val
-            v_idx += 1
-    v_idx = 1 + n_singles
-    for i in range(1, occ):
-        for j in range(0, i):
-            for a in range(occ+1, n_spin):
+            for j in range(0, i):
                 for b in range(occ, a):
-                    sub_idx_2 = j * virt + (b - occ) + 1
-                    val = ci_vec[v_idx] * ci_vec[sub_idx_2]
-                    one_rdm[i, a] -= val
-                    one_rdm[a, i] -= val
-                    v_idx += 1
+                    sub_idx_1 = i * virt + (a - occ)
+                    sub_idx_2 = j * virt + (b - occ)
+                    v_idx = flatten_index(i, j, a, b, occ, virt) + 1 + n_singles
+                    offdiag[sub_idx_1] +=  ci_vec[v_idx] * ci_vec[sub_idx_2 + 1]
+                for b in range(a + 1, n_spin):
+                    sub_idx_1 = i * virt + (a - occ)
+                    sub_idx_2 = j * virt + (b - occ)
+                    v_idx = flatten_index(i, j, a, b, occ, virt) + 1 + n_singles
+                    offdiag[sub_idx_1] -=  ci_vec[v_idx] * ci_vec[sub_idx_2 + 1]
+            for j in range(i + 1, occ):
+                for b in range(occ, a):
+                    sub_idx_1 = i * virt + (a - occ)
+                    sub_idx_2 = j * virt + (b - occ)
+                    v_idx = flatten_index(i, j, a, b, occ, virt) + 1 + n_singles
+                    offdiag[sub_idx_1] -=  ci_vec[v_idx] * ci_vec[sub_idx_2 + 1]
+                for b in range(a + 1, n_spin):
+                    sub_idx_1 = i * virt + (a - occ)
+                    sub_idx_2 = j * virt + (b - occ)
+                    v_idx = flatten_index(i, j, a, b, occ, virt) + 1 + n_singles
+                    offdiag[sub_idx_1] +=  ci_vec[v_idx] * ci_vec[sub_idx_2 + 1]
+    # Not sure how to account for phase
+    offdiag[n_singles // 2:n_singles] = -offdiag[n_singles // 2:n_singles]
+    offdiag = offdiag.reshape((2, -1))
+    one_rdm[0:occ, occ:n_spin] = offdiag
+    one_rdm[occ:n_spin, 0:occ] = offdiag.T
 
     # Doubles Portion
 
@@ -365,7 +378,7 @@ def calculate_1rdm_from_full(ci_vec, occ, virt):
                     
                     a_idx = flatten_index(i, j, a, a+1, occ, virt) + 1 + n_singles
                     b_idx = flatten_index(i, j, b, a+1, occ, virt) + 1 + n_singles
-                    for c in range(a+1, virt):
+                    for c in range(a+1, n_spin):
                         val += ci_vec[a_idx] * ci_vec[b_idx]
                         a_idx += c - occ
                         b_idx += c - occ
@@ -376,12 +389,17 @@ def calculate_1rdm_from_full(ci_vec, occ, virt):
     v_idx = 1 + n_singles
     for i in range(1, occ):
         for j in range(0, i):
-            for a in range(occ + 1, n_spin):
+            for a in range(occ, n_spin):
+                v_idx = flatten_index(i, j, a, occ, occ, virt) + 1 + n_singles
                 for c in range(occ, a):
                     val = abs(ci_vec[v_idx]) ** 2
                     one_rdm[a, a] += val
-                    one_rdm[c, c] += val
                     v_idx += 1
+                v_idx = flatten_index(i, j, a, a+1, occ, virt) + 1 + n_singles
+                for c in range(a+1, n_spin):
+                    val = abs(ci_vec[v_idx]) ** 2
+                    one_rdm[a, a] += val
+                    v_idx += c - occ
     
     return one_rdm
 

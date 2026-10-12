@@ -766,9 +766,20 @@ if __name__ == "__main__":
     result["g_spin"] = g_spin
 
     # print("F_ekt")
-    # trdm = result["fci_two_rdm"]
+    trdm = result["fci_two_rdm"]
     rdm = result["fci_density"]
     # F_ekt, F_ekt_1, F_ekt_2 = build_EKT_Fock(h_spin, rdm, g_spin, trdm)
+
+    energy = 0.0
+    for p in range(n_spin):
+        for q in range(n_spin):
+            energy += h_spin[p, q] * rdm[q, p]
+    for p in range(n_spin):
+        for q in range(n_spin):
+            for r in range(n_spin):
+                for s in range(n_spin):
+                    energy += 0.5 * (g_spin[p,q,r,s] - g_spin[p,q,s,r]) * trdm[r, s, p, q]
+    print(energy, result["E_total"] - energy)
 
     J, K = calculate_JK(rdm, g_spin, n_spin)
 
@@ -948,10 +959,22 @@ if __name__ == "__main__":
             idx = flatten_index(j, i, b, a, occ, virt)
             doubles[idx] = coeff * 1
 
-
-    # ci_vec = np.concatenate((np.array([c0], dtype=np.float64), singles, doubles))
     print(f"Original Norm: {norm}")
 
+    # ci_vec = np.concatenate((np.array([c0], dtype=np.float64), singles, doubles))
+    # new_rdm = calculate_1rdm_from_full(ci_vec, occ, virt)
+    # new_eigenvalues, new_eigenvectors = eigh(new_rdm)
+    # print(new_eigenvalues)
+    # print(eigenvalues)
+    # print("Error norms")
+    # print(np.linalg.norm(eigenvectors-new_eigenvectors))
+    # print(np.linalg.norm(rdm-new_rdm))
+    # for i in range(n_spin):
+    #     print(f"Row {i}")
+    #     print(rdm[i, :])
+    #     print(new_rdm[i, :])
+
+    ##'''
     # Singles / RDM Offdiag checker for naive storage of CI
     # offdiag = -singles * c0
     # idx = 0
@@ -1218,13 +1241,19 @@ if __name__ == "__main__":
     ci_til_vec = np.concatenate((np.array([til_c_0], dtype=np.float64), til_c_singles, til_c_doubles))
     til_rdm = calculate_1rdm_from_full(ci_til_vec, occ, virt)
 
+    print(f"Trace: {np.trace(til_rdm)}")
+
     np.savetxt('transformed_1rdm.csv', til_rdm, "%.8f", ',')
+    
 
     print("Original eigenvalues:")
     print(eigenvalues)
-    eigenvalues, eigenvectors = eigh(til_rdm)
+    eigenvalues, new_eigenvectors = eigh(til_rdm)
     print("Transformed eigenvalues:")
     print(eigenvalues)
+    print(np.linalg.norm(eigenvectors-new_eigenvectors))
+    print(np.linalg.norm(rdm-til_rdm))
+    ##'''
 
     # print("Canonical")
     # F_no = eigenvectors.T @ F @ eigenvectors
