@@ -8,7 +8,7 @@ from src.solver.hf_scf import scf, group_basis_by_lm
 from src.solver.ci_full import FullCISolver
 from src.solver.orbital_opt import optimize_hf_orbitals
 from src.solver.NDR import calculate_1rdm_full, get_natural_orbitals, calculate_2rdm
-from src.utils import ao_to_mo_transform, build_spin_orbital_integrals, flatten_index, calculate_1rdm, calculate_JK, build_EKT_Fock, calculate_1rdm_from_full
+from src.utils import ao_to_mo_transform, build_spin_orbital_integrals, flatten_index, calculate_1rdm, calculate_JK, build_EKT_Fock, calculate_1rdm_from_full, calculate_2rdm_from_full
 from src.ndr import libkrylov as lk
 
 class NumpyEncoder(json.JSONEncoder):
@@ -770,16 +770,16 @@ if __name__ == "__main__":
     rdm = result["fci_density"]
     # F_ekt, F_ekt_1, F_ekt_2 = build_EKT_Fock(h_spin, rdm, g_spin, trdm)
 
-    energy = 0.0
-    for p in range(n_spin):
-        for q in range(n_spin):
-            energy += h_spin[p, q] * rdm[q, p]
-    for p in range(n_spin):
-        for q in range(n_spin):
-            for r in range(n_spin):
-                for s in range(n_spin):
-                    energy += 0.5 * (g_spin[p,q,r,s] - g_spin[p,q,s,r]) * trdm[r, s, p, q]
-    print(energy, result["E_total"] - energy)
+    # energy = 0.0
+    # for p in range(n_spin):
+    #     for q in range(n_spin):
+    #         energy += h_spin[p, q] * rdm[q, p]
+    # for p in range(n_spin):
+    #     for q in range(n_spin):
+    #         for r in range(n_spin):
+    #             for s in range(n_spin):
+    #                 energy += 0.5 * (g_spin[p,q,r,s] - g_spin[p,q,s,r]) * trdm[r, s, p, q]
+    # print(energy, result["E_total"] - energy)
 
     J, K = calculate_JK(rdm, g_spin, n_spin)
 
@@ -803,16 +803,29 @@ if __name__ == "__main__":
 
     rdm_c = rdm - rdm_0
 
-    uFuT = eigenvectors.T @ F @ eigenvectors
-    uFcuT = eigenvectors.T @ (F - F_0) @ eigenvectors
-    uTyu = eigenvectors.T @ rdm_c @ eigenvectors
-    print(np.trace(F @ rdm_c) - np.trace((F - F_0) @ rdm_c))
-    print(np.trace(uFuT @ uTyu) - np.trace(uFcuT @ uTyu))
+    # uFuT = eigenvectors.T @ F @ eigenvectors
+    # uFcuT = eigenvectors.T @ (F - F_0) @ eigenvectors
+    # uTyu = eigenvectors.T @ rdm_c @ eigenvectors
+    # print(np.trace(F @ rdm_c) - np.trace((F - F_0) @ rdm_c))
+    # print(np.trace(uFuT @ uTyu) - np.trace(uFcuT @ uTyu))
 
-    uFuT = eigenvectors.T @ F_0 @ eigenvectors
-    uTyu = eigenvectors.T @ rdm_c @ eigenvectors
-    print(np.trace(F_0 @ rdm_c))
-    print(np.trace(uFuT @ uTyu))
+    # uFuT = eigenvectors.T @ F_0 @ eigenvectors
+    # uTyu = eigenvectors.T @ rdm_c @ eigenvectors
+    # print(np.trace(F_0 @ rdm_c))
+    # print(np.trace(uFuT @ uTyu))
+
+    new_2rdm = np.zeros((n_spin, n_spin, n_spin, n_spin), dtype=np.float64)
+    for p in range(n_spin):
+        for q in range(p+1, n_spin):
+            for r in range(n_spin):
+                for s in range(s+1, n_spin):
+                    val = rdm_0[p,r] * rdm_0[q,s] - rdm_0[p,s] * rdm_0[q,r]
+                    val += 0.5 * (rdm_0[p,r] * rdm_c[q,s] + rdm_c[p,r] * rdm_0[q,s]
+                                - rdm_0[p,s] * rdm_c[q,r] - rdm_c[p,s] * rdm_0[q,r])
+                    new_2rdm[p,q,r,s] = new_2rdm[q,p,s,r] = new_2rdm[r,s,p,q] = new_2rdm[s,r,q,p] = val
+                    new_2rdm[p,q,s,r] = new_2rdm[q,p,r,s] = new_2rdm[r,s,q,p] = new_2rdm[s,r,p,q] = -val
+    np.save('2rdm.npy', new_2rdm)
+    # new_2rdm = np.load('2rdm.npy')
 
     result["rci_coeffs"] = np.insert(result['cisd_coeffs']['doubles'][:, 1], 0, result['cisd_coeffs']['C_0'])
 
@@ -834,106 +847,6 @@ if __name__ == "__main__":
     n_singles = occ * virt
     n_doubles = full_dim - 1
     full_dim = 1 + n_singles + n_doubles
-
-    # full = [[0, 0, 1, 0],
-    #         [0, 0, 0, 1],
-    #         [1, 0, 0, 0],
-    #         [0, 1, 0, 0]]
-    # top_left = np.array(full, dtype=np.float64)
-    # half = [[1, 0,  1,  0],
-    #         [0, 1,  0,  1],
-    #         [1, 0, -1,  0],
-    #         [0, 1,  0, -1]]
-    # top_left = (1 / np.sqrt(2)) * np.array(half, dtype=np.float64)
-    # bottom_right = np.identity(n_spin - 4, dtype=np.float64)
-    # eigenvectors = block_diag(top_left, bottom_right)
-
-    # eigenvectors = eigenvectors.T @ rdm @ eigenvectors
-    # iden = np.identity(n_spin, dtype=np.float64)
-    # indices = np.arange(iden.shape[1])
-
-    # for i in range(0, n_spin - 1, 2):
-    #     indices[[i, i + 1]] = indices[[i + 1, i]]
-    #     perm = iden[:, indices]
-    #     print(np.allclose(eigenvectors, perm @ eigenvectors @ perm.T))
-    #     indices[[i, i + 1]] = indices[[i + 1, i]]
-
-    # for i in range(n_spin // 2 - 1):
-    #     for j in range(n_spin // 2 - 1):
-    #         check = [
-    #             np.isclose(eigenvectors[2 * i, 2 * j], eigenvectors[2 * i + 1, 2 * j + 1]),
-    #             np.isclose(eigenvectors[2 * j, 2 * i], eigenvectors[2 * j + 1, 2 * i + 1]),
-    #             np.isclose(eigenvectors[2 * i, 2 * j + 1], 0),
-    #             np.isclose(eigenvectors[2 * i + 1, 2 * j], 0),
-    #             np.isclose(eigenvectors[2 * j, 2 * i + 1], 0),
-    #             np.isclose(eigenvectors[2 * j + 1, 2 * i], 0)
-    #         ]
-    #         if not all(check):
-    #             print(i, j)
-
-    # (v1a, v1b) = (2, 3)
-    # # (v2a, v2b) = (4, 11)
-    # for v2b in range(occ + 2, n_spin):
-    #     for v2a in range(occ + 1, v2b):
-    #         vec_1 = np.zeros(full_dim, dtype=np.float64)
-    #         vec_2 = np.zeros(full_dim, dtype=np.float64)
-    #         # Assume unit vectors pointing in the direction of
-    #         # (i, j, a, b) = (0, 1, 2, 3) and (0, 1, 4, 5)
-    #         # Singles and C0 are 0
-    #         (i, j, a, b) = (0, 1, v1a, v1b)
-    #         vec_1[0] = 0.25 * (eigenvectors[i, a] * eigenvectors[j, b] - eigenvectors[j, a] * eigenvectors[i, b])
-    #         (i, j, a, b) = (0, 1, v2a, v2b)
-    #         vec_2[0] = 0.25 * (eigenvectors[i, a] * eigenvectors[j, b] - eigenvectors[j, a] * eigenvectors[i, b])
-
-    #         # (j, k, b, c) = (0, 1, 2, 3) and (0, 1, 4, 5)
-    #         v_idx = 1
-    #         for a in range(occ, n_spin):
-    #             # vec_1
-    #             (j, k, b, c) = (0, 1, v1a, v1b)
-    #             d1 = eigenvectors[a, b] * eigenvectors[k, c] - eigenvectors[a, c] * eigenvectors[k, b]
-    #             d2 = eigenvectors[a, c] * eigenvectors[j, b] - eigenvectors[a, b] * eigenvectors[j, c]
-                
-    #             # i = j = 0
-    #             vec_1[v_idx] += 0.25 * d1
-    #             # i = k = 1
-    #             vec_1[v_idx + virt] += 0.25 * d2
-
-    #             # vec_2
-    #             (j, k, b, c) = (0, 1, v2a, v2b)
-    #             d1 = eigenvectors[a, b] * eigenvectors[k, c] - eigenvectors[a, c] * eigenvectors[k, b]
-    #             d2 = eigenvectors[a, c] * eigenvectors[j, b] - eigenvectors[a, b] * eigenvectors[j, c]
-                
-    #             # i = j = 0
-    #             vec_2[v_idx] += 0.25 * d1
-    #             # i = k = 1
-    #             vec_2[v_idx + virt] += 0.25 * d2
-
-    #             v_idx += 1
-
-
-    #         # (k, l, c, d) = (0, 1, 2, 3) and (0, 1, 4, 5)
-    #         v_idx = 1 + n_singles
-    #         for b in range(occ+1, n_spin):
-    #             for a in range(occ, b):
-    #                 # Since I'm constraining i < j, I think I can just "throw out" the (i, j) = (l, k) part
-    #                 # it's antisymmetric regardless
-    #                 (k, l, c, d) = (0, 1, v1a, v1b)
-    #                 d1 = eigenvectors[a, c] * eigenvectors[b, d] - eigenvectors[a, d] * eigenvectors[b, c]
-
-    #                 # i = k = 0, j = l = 1
-    #                 vec_1[v_idx] = 0.5 * d1
-
-    #                 (k, l, c, d) = (0, 1, v2a, v2b)
-    #                 d1 = eigenvectors[a, c] * eigenvectors[b, d] - eigenvectors[a, d] * eigenvectors[b, c]
-
-    #                 # i = k = 0, j = l = 1
-    #                 vec_2[v_idx] = 0.5 * d1
-
-    #                 v_idx += 1
-
-    #         # print(vec_1)
-    #         # print(vec_2)
-    #         print(f'Vecs {v1a, v1b} and {v2a, v2b}: {vec_1 @ vec_2}')
 
     norm = 0.0
     c0 = 0.0
@@ -961,7 +874,9 @@ if __name__ == "__main__":
 
     print(f"Original Norm: {norm}")
 
-    # ci_vec = np.concatenate((np.array([c0], dtype=np.float64), singles, doubles))
+    ci_vec = np.concatenate((np.array([c0], dtype=np.float64), singles, doubles))
+    calculate_2rdm_from_full(new_2rdm, ci_vec, occ, virt)
+
     # new_rdm = calculate_1rdm_from_full(ci_vec, occ, virt)
     # new_eigenvalues, new_eigenvectors = eigh(new_rdm)
     # print(new_eigenvalues)
@@ -974,7 +889,7 @@ if __name__ == "__main__":
     #     print(rdm[i, :])
     #     print(new_rdm[i, :])
 
-    ##'''
+    '''
     # Singles / RDM Offdiag checker for naive storage of CI
     # offdiag = -singles * c0
     # idx = 0
@@ -1253,7 +1168,7 @@ if __name__ == "__main__":
     print(eigenvalues)
     print(np.linalg.norm(eigenvectors-new_eigenvectors))
     print(np.linalg.norm(rdm-til_rdm))
-    ##'''
+    '''
 
     # print("Canonical")
     # F_no = eigenvectors.T @ F @ eigenvectors
