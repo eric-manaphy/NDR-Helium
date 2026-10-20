@@ -770,16 +770,17 @@ if __name__ == "__main__":
     rdm = result["fci_density"]
     # F_ekt, F_ekt_1, F_ekt_2 = build_EKT_Fock(h_spin, rdm, g_spin, trdm)
 
-    # energy = 0.0
-    # for p in range(n_spin):
-    #     for q in range(n_spin):
-    #         energy += h_spin[p, q] * rdm[q, p]
-    # for p in range(n_spin):
-    #     for q in range(n_spin):
-    #         for r in range(n_spin):
-    #             for s in range(n_spin):
-    #                 energy += 0.5 * (g_spin[p,q,r,s] - g_spin[p,q,s,r]) * trdm[r, s, p, q]
-    # print(energy, result["E_total"] - energy)
+    energy = 0.0
+    for p in range(n_spin):
+        for q in range(n_spin):
+            energy += h_spin[p, q] * rdm[q, p]
+    for p in range(n_spin):
+        for q in range(n_spin):
+            for r in range(n_spin):
+                for s in range(n_spin):
+                    energy += 0.5 * (g_spin[p,q,r,s] - g_spin[p,q,s,r]) * trdm[r, s, p, q]
+    print("Energy:")
+    print(energy, result["E_total"] - energy)
 
     J, K = calculate_JK(rdm, g_spin, n_spin)
 
@@ -814,18 +815,18 @@ if __name__ == "__main__":
     # print(np.trace(F_0 @ rdm_c))
     # print(np.trace(uFuT @ uTyu))
 
-    new_2rdm = np.zeros((n_spin, n_spin, n_spin, n_spin), dtype=np.float64)
-    for p in range(n_spin):
-        for q in range(p+1, n_spin):
-            for r in range(n_spin):
-                for s in range(s+1, n_spin):
-                    val = rdm_0[p,r] * rdm_0[q,s] - rdm_0[p,s] * rdm_0[q,r]
-                    val += 0.5 * (rdm_0[p,r] * rdm_c[q,s] + rdm_c[p,r] * rdm_0[q,s]
-                                - rdm_0[p,s] * rdm_c[q,r] - rdm_c[p,s] * rdm_0[q,r])
-                    new_2rdm[p,q,r,s] = new_2rdm[q,p,s,r] = new_2rdm[r,s,p,q] = new_2rdm[s,r,q,p] = val
-                    new_2rdm[p,q,s,r] = new_2rdm[q,p,r,s] = new_2rdm[r,s,q,p] = new_2rdm[s,r,p,q] = -val
-    np.save('2rdm.npy', new_2rdm)
-    # new_2rdm = np.load('2rdm.npy')
+    # new_2rdm = np.zeros((n_spin, n_spin, n_spin, n_spin), dtype=np.float64)
+    # for p in range(n_spin):
+    #     for q in range(p+1, n_spin):
+    #         for r in range(n_spin):
+    #             for s in range(r+1, n_spin):
+    #                 val = 0.5 * (rdm_0[p,r] * rdm_0[q,s] - rdm_0[p,s] * rdm_0[q,r])
+    #                 val += 0.5 * (rdm_0[p,r] * rdm_c[q,s] + rdm_c[p,r] * rdm_0[q,s]
+    #                             - rdm_0[p,s] * rdm_c[q,r] - rdm_c[p,s] * rdm_0[q,r])
+    #                 new_2rdm[p,q,r,s] = new_2rdm[q,p,s,r] = new_2rdm[r,s,p,q] = new_2rdm[s,r,q,p] = val
+    #                 new_2rdm[p,q,s,r] = new_2rdm[q,p,r,s] = new_2rdm[r,s,q,p] = new_2rdm[s,r,p,q] = -val
+    # np.save('2rdm.npy', new_2rdm)
+    new_2rdm = np.load('2rdm.npy')
 
     result["rci_coeffs"] = np.insert(result['cisd_coeffs']['doubles'][:, 1], 0, result['cisd_coeffs']['C_0'])
 
@@ -875,9 +876,21 @@ if __name__ == "__main__":
     print(f"Original Norm: {norm}")
 
     ci_vec = np.concatenate((np.array([c0], dtype=np.float64), singles, doubles))
-    calculate_2rdm_from_full(new_2rdm, ci_vec, occ, virt)
+    calculate_2rdm_from_full(new_2rdm, ci_vec, occ, virt, trdm)
+    new_rdm = calculate_1rdm_from_full(ci_vec, occ, virt)
 
-    # new_rdm = calculate_1rdm_from_full(ci_vec, occ, virt)
+    energy = 0.0
+    for p in range(n_spin):
+        for q in range(n_spin):
+            energy += h_spin[p, q] * new_rdm[q, p]
+    for p in range(n_spin):
+        for q in range(n_spin):
+            for r in range(n_spin):
+                for s in range(n_spin):
+                    energy += 0.5 * (g_spin[p,q,r,s] - g_spin[p,q,s,r]) * new_2rdm[r, s, p, q]
+    print("New energy:")
+    print(energy, result["E_total"] - energy)
+
     # new_eigenvalues, new_eigenvectors = eigh(new_rdm)
     # print(new_eigenvalues)
     # print(eigenvalues)
