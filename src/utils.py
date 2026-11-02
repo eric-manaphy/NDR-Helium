@@ -425,7 +425,7 @@ def calculate_2rdm_from_full(two_rdm, ci_vec, occ, virt, trdm=0):
                     for a in range(occ+1, n_spin):
                         for b in range(occ, a):
                             # Might be a factor of 0.5 or 2 here?
-                            val += 0.5 * ci_vec[d_0 + v_idx_1] * ci_vec[d_0 + v_idx_2]
+                            val += ci_vec[d_0 + v_idx_1] * ci_vec[d_0 + v_idx_2] / 2
                             v_idx_1 += 1
                             v_idx_2 += 1
                     two_rdm[i, j, k, l] -= val
@@ -446,7 +446,7 @@ def calculate_2rdm_from_full(two_rdm, ci_vec, occ, virt, trdm=0):
                         for c in range(occ, d):
                             # Might be a factor of 0.5 or 2 here?
                             # For some reason this is negative; I'll have to double check
-                            val = -0.5 * ci_vec[d_0 + v_idx_1] * ci_vec[d_0 + v_idx_2]
+                            val = -ci_vec[d_0 + v_idx_1] * ci_vec[d_0 + v_idx_2] / 2
                             two_rdm[a, b, c, d] += val
                             two_rdm[b, a, c, d] -= val
                             two_rdm[a, b, d, c] -= val
@@ -461,7 +461,7 @@ def calculate_2rdm_from_full(two_rdm, ci_vec, occ, virt, trdm=0):
             for a in range(occ+1, n_spin):
                 for b in range(occ, a):
                     # Check if negative
-                    val = -0.5 * ci_vec[d_0 + v_idx_1] * ci_vec[0]
+                    val = -ci_vec[d_0 + v_idx_1] * ci_vec[0] / 2
                     v_idx_1 += 1
                     two_rdm[i, j, a, b] -= val
                     two_rdm[j, i, b, a] -= val
@@ -488,15 +488,16 @@ def calculate_2rdm_from_full(two_rdm, ci_vec, occ, virt, trdm=0):
                     v_idx_2 = cur_idx_2 # Reset singles for given k
                     val = 0
                     # Might need a factor of 0.5
-                    for b in range(occ, a):
-                        val += 0.5 * ci_vec[1 + v_idx_2] * ci_vec[d_0 + v_idx_1]
+                    # Now has annoying phase factors that I reverse engineered
+                    for b in range(occ, a):         
+                        val += ci_vec[1 + v_idx_2] * ci_vec[d_0 + v_idx_1] / 2 * ((-1) ** (k == i))
                         v_idx_1 += 1
                         v_idx_2 += 1
                     cur_idx_1 = v_idx_1 # Set new start for doubles
                     v_idx_1 += a - occ # Switch from (a, a-1) to (a+1, a)
                     v_idx_2 += 1 # Account for the jump where b != a
                     for b in range(a+1, n_spin):
-                        val += 0.5 * ci_vec[1 + v_idx_2] * -ci_vec[d_0 + v_idx_1]
+                        val += ci_vec[1 + v_idx_2] * ci_vec[d_0 + v_idx_1] / 2 * ((-1) ** (k == j))
                         v_idx_1 += b - occ # Jump from (a+1, a) to (a+2, a) etc.
                         v_idx_2 += 1
                     two_rdm[i, j, k, a] -= val
@@ -520,7 +521,7 @@ def calculate_2rdm_from_full(two_rdm, ci_vec, occ, virt, trdm=0):
                 v_idx_1 = cur_idx_1
                 for a in range(occ+1, n_spin):
                     for b in range(occ, a):
-                        val = -0.5 * ci_vec[d_0 + v_idx_1] * ci_vec[1 + v_idx_2]
+                        val = -ci_vec[d_0 + v_idx_1] * ci_vec[1 + v_idx_2] / 2
                         two_rdm[a, b, c, i] -= val
                         two_rdm[b, a, i, c] -= val
                         two_rdm[c, i, a, b] -= val
@@ -539,7 +540,7 @@ def calculate_2rdm_from_full(two_rdm, ci_vec, occ, virt, trdm=0):
                 v_idx_1 = cur_idx_1_temp
                 for a in range(occ+1, n_spin):
                     for b in range(occ, a):
-                        val = 0.5 * -ci_vec[d_0 + v_idx_1] * ci_vec[1 + v_idx_2]
+                        val = -ci_vec[d_0 + v_idx_1] * ci_vec[1 + v_idx_2] / 2
                         two_rdm[a, b, c, i] -= val
                         two_rdm[b, a, i, c] -= val
                         two_rdm[c, i, a, b] -= val
@@ -552,6 +553,75 @@ def calculate_2rdm_from_full(two_rdm, ci_vec, occ, virt, trdm=0):
                 v_idx_2 += 1
 
     # iajb
+    # Singles part
+    # This is just to account for i != j
+    for a in range(occ, n_spin):
+        for b in range(occ, a+1):
+            # i = j = 0
+            a_idx = (a - occ)
+            b_idx = (b - occ)
+            a_val = ci_vec[a_idx + 1]
+            b_val = ci_vec[b_idx + 1]
+            val = -a_val * b_val / 2
+
+            two_rdm[0,a,0,b] += val
+            two_rdm[a,0,b,0] += val
+            two_rdm[0,a,b,0] -= val
+            two_rdm[a,0,0,b] -= val
+
+            if(a != b):
+                two_rdm[0,b,0,a] += val
+                two_rdm[b,0,a,0] += val
+                two_rdm[0,b,a,0] -= val
+                two_rdm[b,0,0,a] -= val
+
+            # i != j
+            # i = 0, j = 1
+            a_idx = (a - occ) + virt
+            a_val = ci_vec[a_idx + 1]
+            val = a_val * b_val / 2
+
+            two_rdm[1,b,0,a] += val
+            two_rdm[b,1,a,0] += val
+            two_rdm[1,b,a,0] -= val
+            two_rdm[b,1,0,a] -= val
+            two_rdm[0,a,1,b] += val
+            two_rdm[a,0,b,1] += val
+            two_rdm[0,a,b,1] -= val
+            two_rdm[a,0,1,b] -= val
+
+            # i = 1, j = 0
+            a_idx = (a - occ)
+            b_idx = (b - occ) + virt
+            a_val = ci_vec[a_idx + 1]
+            b_val = ci_vec[b_idx + 1]
+            val = a_val * b_val / 2
+
+            two_rdm[1,a,0,b] += val
+            two_rdm[a,1,b,0] += val
+            two_rdm[1,a,b,0] -= val
+            two_rdm[a,1,0,b] -= val
+            two_rdm[0,b,1,a] += val
+            two_rdm[b,0,a,1] += val
+            two_rdm[0,b,a,1] -= val
+            two_rdm[b,0,1,a] -= val
+
+            # i = j = 1
+            a_idx = (a - occ) + virt
+            a_val = ci_vec[a_idx + 1]
+            val = -a_val * b_val / 2
+            two_rdm[1,a,1,b] += val
+            two_rdm[a,1,b,1] += val
+            two_rdm[1,a,b,1] -= val
+            two_rdm[a,1,1,b] -= val
+            
+            if(a != b):
+                two_rdm[1,b,1,a] += val
+                two_rdm[b,1,a,1] += val
+                two_rdm[1,b,a,1] -= val
+                two_rdm[b,1,1,a] -= val
+
+    # Doubles part
     v_idx_1 = 0 # ja
     v_idx_2 = 0 # ib
     # Since this is 2-electron, the only cases we have
@@ -564,50 +634,48 @@ def calculate_2rdm_from_full(two_rdm, ci_vec, occ, virt, trdm=0):
             v_idx_2 = flatten_index(1,0,b,occ,occ,virt)
             val = 0
             for c in range(occ, b):
-                val += -0.5 * ci_vec[d_0 + v_idx_1] * ci_vec[d_0 + v_idx_2]
+                val += -ci_vec[d_0 + v_idx_1] * ci_vec[d_0 + v_idx_2] / 2
                 v_idx_1 += 1
                 v_idx_2 += 1
-            v_idx_2 = flatten_index(1,0,b,b+1,occ,virt)
             v_idx_1 = flatten_index(1,0,a,b+1,occ,virt)
+            v_idx_2 = flatten_index(1,0,b,b+1,occ,virt)
             for c in range(b+1, a):
-                val += 0.5 * ci_vec[d_0 + v_idx_1] * ci_vec[d_0 + v_idx_2]
+                val += ci_vec[d_0 + v_idx_1] * ci_vec[d_0 + v_idx_2] / 2
                 v_idx_1 += 1
                 v_idx_2 += c - occ # Jump from (b+1, b) to (b+2, b) etc.
-            v_idx_2 = flatten_index(1,0,b,a+1,occ,virt)
             v_idx_1 = flatten_index(1,0,a,a+1,occ,virt)
+            v_idx_2 = flatten_index(1,0,b,a+1,occ,virt)
             for c in range(a+1, n_spin):
-                val += -0.5 * ci_vec[d_0 + v_idx_1] * ci_vec[d_0 + v_idx_2]
+                val += -ci_vec[d_0 + v_idx_1] * ci_vec[d_0 + v_idx_2] / 2
                 v_idx_1 += c - occ
                 v_idx_2 += c - occ
             # i = j = 0
             a_idx = (a - occ) # + 0 * virt
             b_idx = (b - occ)
-            new_val = val # + 0.5 * ci_vec[a_idx + 1] * ci_vec[b_idx + 1]
-            two_rdm[0,a,0,b] += new_val
-            two_rdm[a,0,b,0] += new_val
-            two_rdm[0,a,b,0] -= new_val  
-            two_rdm[a,0,0,b] -= new_val
+            two_rdm[0,a,0,b] += val
+            two_rdm[a,0,b,0] += val
+            two_rdm[0,a,b,0] -= val
+            two_rdm[a,0,0,b] -= val
 
             if(a != b):
-                two_rdm[0,b,0,a] += new_val
-                two_rdm[b,0,a,0] += new_val
-                two_rdm[0,b,a,0] -= new_val
-                two_rdm[b,0,0,a] -= new_val
+                two_rdm[0,b,0,a] += val
+                two_rdm[b,0,a,0] += val
+                two_rdm[0,b,a,0] -= val
+                two_rdm[b,0,0,a] -= val
 
             # i = j = 1
             a_idx += virt
             b_idx += virt
-            new_val = val # + 0.5 * ci_vec[a_idx + 1] * ci_vec[b_idx + 1]
-            two_rdm[1,a,1,b] += new_val
-            two_rdm[a,1,b,1] += new_val
-            two_rdm[1,a,b,1] -= new_val
-            two_rdm[a,1,1,b] -= new_val
+            two_rdm[1,a,1,b] += val
+            two_rdm[a,1,b,1] += val
+            two_rdm[1,a,b,1] -= val
+            two_rdm[a,1,1,b] -= val
             
             if(a != b):
-                two_rdm[1,b,1,a] += new_val
-                two_rdm[b,1,a,1] += new_val
-                two_rdm[1,b,a,1] -= new_val
-                two_rdm[b,1,1,a] -= new_val
+                two_rdm[1,b,1,a] += val
+                two_rdm[b,1,a,1] += val
+                two_rdm[1,b,a,1] -= val
+                two_rdm[b,1,1,a] -= val
 
     return two_rdm
 

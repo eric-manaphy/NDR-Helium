@@ -769,6 +769,7 @@ if __name__ == "__main__":
     trdm = result["fci_two_rdm"]
     rdm = result["fci_density"]
     # F_ekt, F_ekt_1, F_ekt_2 = build_EKT_Fock(h_spin, rdm, g_spin, trdm)
+    
 
     energy = 0.0
     for p in range(n_spin):
@@ -779,8 +780,15 @@ if __name__ == "__main__":
             for r in range(n_spin):
                 for s in range(n_spin):
                     energy += 0.5 * (g_spin[p,q,r,s] - g_spin[p,q,s,r]) * trdm[r, s, p, q]
-    print("Energy:")
-    print(energy, result["E_total"] - energy)
+    
+    trace = 0
+    for p in range(n_spin):
+        for q in range(n_spin):
+            trace += trdm[p,q,p,q]
+    print(f"2-RDM trace: {trace}")
+    print(f"FCI energy: {energy}")
+    print(f"Correlation energy: {energy - result['E_total']}")
+    print(f"HF energy: {result['E_total']}")
 
     J, K = calculate_JK(rdm, g_spin, n_spin)
 
@@ -789,7 +797,7 @@ if __name__ == "__main__":
     result["fci_Fock"] = F
 
     eigenvalues, eigenvectors = eigh(rdm)
-    print(eigenvalues)
+    # print(eigenvalues)
     c0 = eigenvectors[:, -1]
     c1 = eigenvectors[:, -2]
 
@@ -814,20 +822,7 @@ if __name__ == "__main__":
     # uTyu = eigenvectors.T @ rdm_c @ eigenvectors
     # print(np.trace(F_0 @ rdm_c))
     # print(np.trace(uFuT @ uTyu))
-
-    # new_2rdm = np.zeros((n_spin, n_spin, n_spin, n_spin), dtype=np.float64)
-    # for p in range(n_spin):
-    #     for q in range(p+1, n_spin):
-    #         for r in range(n_spin):
-    #             for s in range(r+1, n_spin):
-    #                 val = 0.5 * (rdm_0[p,r] * rdm_0[q,s] - rdm_0[p,s] * rdm_0[q,r])
-    #                 val += 0.5 * (rdm_0[p,r] * rdm_c[q,s] + rdm_c[p,r] * rdm_0[q,s]
-    #                             - rdm_0[p,s] * rdm_c[q,r] - rdm_c[p,s] * rdm_0[q,r])
-    #                 new_2rdm[p,q,r,s] = new_2rdm[q,p,s,r] = new_2rdm[r,s,p,q] = new_2rdm[s,r,q,p] = val
-    #                 new_2rdm[p,q,s,r] = new_2rdm[q,p,r,s] = new_2rdm[r,s,q,p] = new_2rdm[s,r,p,q] = -val
-    # np.save('2rdm.npy', new_2rdm)
-    new_2rdm = np.load('2rdm.npy')
-
+    
     result["rci_coeffs"] = np.insert(result['cisd_coeffs']['doubles'][:, 1], 0, result['cisd_coeffs']['C_0'])
 
     # c_0 = result['cisd_coeffs']['C_0']
@@ -835,7 +830,7 @@ if __name__ == "__main__":
     # doubles = result['cisd_coeffs']['doubles'][:, 1]
 
     # eigenvalues, eigenvectors = eigh(F)
-    print(eigenvalues)
+    # print(eigenvalues)
     result["fci_orb_energies"] = eigenvalues
     result["fci_coefficients"] = eigenvectors
 
@@ -849,6 +844,7 @@ if __name__ == "__main__":
     n_doubles = full_dim - 1
     full_dim = 1 + n_singles + n_doubles
 
+    norm_doubles = 0.0
     norm = 0.0
     c0 = 0.0
     singles = np.zeros(n_singles, dtype=np.float64)
@@ -873,11 +869,48 @@ if __name__ == "__main__":
             idx = flatten_index(j, i, b, a, occ, virt)
             doubles[idx] = coeff * 1
 
+            norm_doubles += abs(coeff) ** 2
+
     print(f"Original Norm: {norm}")
 
     ci_vec = np.concatenate((np.array([c0], dtype=np.float64), singles, doubles))
-    calculate_2rdm_from_full(new_2rdm, ci_vec, occ, virt, trdm)
     new_rdm = calculate_1rdm_from_full(ci_vec, occ, virt)
+
+    # HF reference
+    # rdm_0 = np.zeros((n_spin, n_spin), dtype=np.float64)
+    # rdm_0[0, 0] = 1
+    # rdm_0[1, 1] = 1
+    # rdm_c = rdm - rdm_0
+
+    # new_2rdm = np.zeros((n_spin, n_spin, n_spin, n_spin), dtype=np.float64)
+    # for p in range(n_spin):
+    #     for q in range(p+1, n_spin):
+    #         for r in range(n_spin):
+    #             for s in range(r+1, n_spin):
+    #                 val = (rdm_0[p,r] * rdm_0[q,s] - rdm_0[p,s] * rdm_0[q,r]) / 2
+    #                 val += (rdm_0[p,r] * rdm_c[q,s] + rdm_c[p,r] * rdm_0[q,s]
+    #                             - rdm_0[p,s] * rdm_c[q,r] - rdm_c[p,s] * rdm_0[q,r]) / 2
+    #                 new_2rdm[p,q,r,s] = new_2rdm[q,p,s,r] = new_2rdm[r,s,p,q] = new_2rdm[s,r,q,p] = val
+    #                 new_2rdm[p,q,s,r] = new_2rdm[q,p,r,s] = new_2rdm[r,s,q,p] = new_2rdm[s,r,p,q] = -val
+    # np.save('2rdm_hf.npy', new_2rdm)
+    new_2rdm = np.load('2rdm.npy')
+    trdm_0 = np.zeros((n_spin, n_spin, n_spin, n_spin), dtype=np.float64)
+    for p in range(n_spin):
+        for q in range(p+1, n_spin):
+            for r in range(n_spin):
+                for s in range(r+1, n_spin):
+                    val = 0.5 * (rdm_0[p,r] * rdm_0[q,s] - rdm_0[p,s] * rdm_0[q,r])
+                    trdm_0[p,q,r,s] = trdm_0[q,p,s,r] = trdm_0[r,s,p,q] = trdm_0[s,r,q,p] = val
+                    trdm_0[p,q,s,r] = trdm_0[q,p,r,s] = trdm_0[r,s,q,p] = trdm_0[s,r,p,q] = -val
+
+    trace = 0
+    for p in range(n_spin):
+        for q in range(n_spin):
+            trace += trdm_0[p,q,p,q]
+    print()
+    print(f"2-RDM0 trace: {trace}")
+
+    calculate_2rdm_from_full(new_2rdm, ci_vec, occ, virt, trdm)
 
     energy = 0.0
     for p in range(n_spin):
@@ -888,19 +921,64 @@ if __name__ == "__main__":
             for r in range(n_spin):
                 for s in range(n_spin):
                     energy += 0.5 * (g_spin[p,q,r,s] - g_spin[p,q,s,r]) * new_2rdm[r, s, p, q]
-    print("New energy:")
-    print(energy, result["E_total"] - energy)
+    energy_0 = 0.0
+    for p in range(n_spin):
+        for q in range(n_spin):
+            energy_0 += h_spin[p, q] * rdm_0[q, p]
+    for p in range(n_spin):
+        for q in range(n_spin):
+            for r in range(n_spin):
+                for s in range(n_spin):
+                    energy_0 += 0.5 * (g_spin[p,q,r,s] - g_spin[p,q,s,r]) * trdm_0[r, s, p, q]
+
+    trace = 0.0
+    for p in range(n_spin):
+        for q in range(n_spin):
+            trace += new_2rdm[p,q,p,q]
+    print()
+    print(f"2-RDM trace: {trace}")
+    print(f"New FCI energy: {energy}")
+    print(f"Correlation energy: {energy - energy_0}")
+    print(f"NDR energy: {energy_0}")
+
+    trace_old = 0.0
+    trace_new = 0.0
+    for i in range(occ):
+        for j in range(occ):
+            trace_old += trdm[i,j,i,j]
+            trace_new += new_2rdm[i,j,i,j]
+    for a in range(occ,n_spin):
+        for b in range(occ,n_spin):
+            trace_old += trdm[a,b,a,b]
+            trace_new += new_2rdm[a,b,a,b]
+    for i in range(occ):
+        for a in range(occ,n_spin):
+            trace_old += trdm[i,a,i,a]
+            trace_new += new_2rdm[i,a,i,a]
+            trace_old += trdm[a,i,a,i]
+            trace_new += new_2rdm[a,i,a,i]
+    print()
+    print("Doubles traces")
+    print(f"Old 2RDM: {trace_old}")
+    print(f"New 2RDM: {trace_new}")
+    print(f"Wfn norm: {norm_doubles}")
 
     # new_eigenvalues, new_eigenvectors = eigh(new_rdm)
+    print()
     # print(new_eigenvalues)
     # print(eigenvalues)
-    # print("Error norms")
+    print("Error norms")
     # print(np.linalg.norm(eigenvectors-new_eigenvectors))
-    # print(np.linalg.norm(rdm-new_rdm))
+    print(f"1RDM: {np.linalg.norm(rdm-new_rdm)}")
+    print(f"2RDM: {np.linalg.norm(trdm-new_2rdm)}")
     # for i in range(n_spin):
     #     print(f"Row {i}")
     #     print(rdm[i, :])
     #     print(new_rdm[i, :])
+    rdm1 = np.einsum('pqpr->qr', trdm) * 2
+    print(f"Old: {np.linalg.norm(rdm-rdm1)}")
+    rdm1 = np.einsum('pqpr->qr', new_2rdm) * 2
+    print(f"New: {np.linalg.norm(new_rdm-rdm1)}")
 
     '''
     # Singles / RDM Offdiag checker for naive storage of CI
