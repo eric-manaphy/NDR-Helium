@@ -732,7 +732,7 @@ if __name__ == "__main__":
     Z = 2
     N = 2
 
-    my_zetas = Zetas.TZVP
+    my_zetas = Zetas.HeOpt
 
     # factor = 1.7/0.7
 
@@ -740,12 +740,12 @@ if __name__ == "__main__":
     #     [z / factor for z in shell] for shell in my_zetas
     # ]
 
-    # result = run_calculation(Z, N, my_zetas, mode="ndr")
+    result = run_calculation(Z, N, my_zetas, mode="ndr")
 
-    # with open("fullci_tzvp_new.json", 'w') as file:
-    #     json.dump(result, file, cls=NumpyEncoder)
-    with open("fullci_tzvp_new.json", 'r') as file:
-        result = json.load(file, object_hook=list_to_np)
+    with open("fullci_he_opt.json", 'w') as file:
+        json.dump(result, file, cls=NumpyEncoder)
+    # with open("fullci_tzvp_new.json", 'r') as file:
+    #     result = json.load(file, object_hook=list_to_np)
     
     # print(f"HF Energies: {result['orb_energies']}")
 
@@ -770,7 +770,6 @@ if __name__ == "__main__":
     rdm = result["fci_density"]
     # F_ekt, F_ekt_1, F_ekt_2 = build_EKT_Fock(h_spin, rdm, g_spin, trdm)
     
-
     energy = 0.0
     for p in range(n_spin):
         for q in range(n_spin):
@@ -873,6 +872,8 @@ if __name__ == "__main__":
 
     print(f"Original Norm: {norm}")
 
+    '''
+    # 1-RDM and 2-RDM from CI coefficients
     ci_vec = np.concatenate((np.array([c0], dtype=np.float64), singles, doubles))
     new_rdm = calculate_1rdm_from_full(ci_vec, occ, virt)
 
@@ -979,8 +980,11 @@ if __name__ == "__main__":
     print(f"Old: {np.linalg.norm(rdm-rdm1)}")
     rdm1 = np.einsum('pqpr->qr', new_2rdm) * 2
     print(f"New: {np.linalg.norm(new_rdm-rdm1)}")
-
     '''
+
+    
+    '''
+    # Transformed CI coefficients
     # Singles / RDM Offdiag checker for naive storage of CI
     # offdiag = -singles * c0
     # idx = 0
@@ -1261,12 +1265,27 @@ if __name__ == "__main__":
     print(np.linalg.norm(rdm-til_rdm))
     '''
 
-    # print("Canonical")
-    # F_no = eigenvectors.T @ F @ eigenvectors
-    # occ_vals, occ_vecs = eigh(F_no[:occ, :occ])
-    # virt_vals, virt_vecs = eigh(F_no[occ:, occ:])
-    # print(occ_vals)
-    # print(virt_vals)
+    print("EKT Fock")
+    print("IPs")
+    g_spin_as = g_spin - g_spin.transpose(0, 1, 3, 2)
+    one_e = np.einsum('rp,rq->pq',h_spin,rdm)
+    two_e = np.einsum('rspt,rsqt->pq',g_spin_as,trdm)
+    F_ekt = -one_e - two_e
+    occ_vals, occ_vecs = eigh(F_ekt[:occ, :occ], rdm[:occ, :occ])
+    virt_vals, virt_vecs = eigh(F_ekt[occ:, occ:], rdm[occ:, occ:])
+    print(occ_vals)
+    print(virt_vals)
+
+    print("EAs")
+    hole_rdm = np.identity(n_spin, dtype=np.float64) - rdm
+    hole_trdm = trdm.transpose(0,2,1,3)
+    one_e = np.einsum('pr,rq->pq',h_spin,hole_rdm)
+    two_e = np.einsum('prst,rtqs->pq',g_spin_as,hole_trdm)
+    F_ekt = -one_e - two_e
+    occ_vals, occ_vecs = eigh(F_ekt[:occ, :occ], hole_rdm[:occ, :occ])
+    virt_vals, virt_vecs = eigh(F_ekt[occ:, occ:], hole_rdm[occ:, occ:])
+    print(occ_vals)
+    print(virt_vals)
     
     # result["fci_coefficients"] = block_diag(occ_vecs, virt_vecs)
     # result["fci_orb_energies"] = np.concatenate([occ_vals, virt_vals])
